@@ -34,7 +34,17 @@ aws cloudformation deploy \
         LambdaPackageKey='lambda.zip' \
     --no-fail-on-empty-changeset
 
-# Phase 6: Print function URL
+# Phase 6: Sync geotiffs to data bucket
+data_bucket_name=$(aws cloudformation describe-stacks \
+    --stack-name "${app_stack_name}" \
+    --query "Stacks[0].Outputs[?OutputKey=='DataBucketName'].OutputValue" \
+    --output text)
+
+echo "Data bucket: ${data_bucket_name}"
+
+aws s3 sync geotiffs/ "s3://${data_bucket_name}/"
+
+# Phase 7: Print function URL
 function_url=$(aws cloudformation describe-stacks \
     --stack-name "${app_stack_name}" \
     --query "Stacks[0].Outputs[?OutputKey=='FunctionUrl'].OutputValue" \

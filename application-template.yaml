@@ -13,6 +13,16 @@ Parameters:
     Description: S3 key for the Lambda deployment package
 
 Resources:
+  DataBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'atgeo-experiment-data-${AWS::Region}-${AWS::AccountId}'
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
   LambdaExecutionRole:
     Type: AWS::IAM::Role
     Properties:
@@ -26,6 +36,14 @@ Resources:
             Action: sts:AssumeRole
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: atgeo-experiment-data-bucket-read
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: s3:GetObject
+                Resource: !Sub 'arn:aws:s3:::atgeo-experiment-data-${AWS::Region}-${AWS::AccountId}/*'
 
   LambdaFunction:
     Type: AWS::Lambda::Function
@@ -34,6 +52,9 @@ Resources:
       Runtime: python3.14
       Handler: lambda.handler
       Role: !GetAtt LambdaExecutionRole.Arn
+      Environment:
+        Variables:
+          DATA_BUCKET_NAME: !Ref DataBucket
       Code:
         S3Bucket: !ImportValue
           'Fn::Sub': '${BootstrapStackName}-DeploymentBucketName'
@@ -57,3 +78,7 @@ Outputs:
   FunctionUrl:
     Description: Public URL for the Lambda function
     Value: !GetAtt LambdaFunctionUrl.FunctionUrl
+
+  DataBucketName:
+    Description: Name of the S3 bucket for geotiff data files
+    Value: !Ref DataBucket
