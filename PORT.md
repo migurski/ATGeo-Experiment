@@ -1,56 +1,15 @@
-# C++ Port Plan
+# C++ Port
 
-## Context
-
-The Python Lambda (lambda.py) is working and smoke-tested. This document plans:
-
-1. **Python unit tests** — `unittest` suite in `lambda.py` runnable via `python -m unittest lambda` without AWS.
-2. **C++ port** — exact functional replica statically linked with minimal GDAL (GTiff + /vsis3/ only), deployable as a ZIP Lambda alongside the Python version.
-
----
-
-## Part 1: Python unit tests
-
-Run with: `python -m unittest lambda`
-
-Tests exercise `decimal_precision()` directly and `handler()` with mocked GDAL reads (no real S3).
-
-**Mock strategy**: `gdal.Open` returns a mock dataset whose `GetGeoTransform()` returns a plausible
-global geotransform and whose `GetRasterBand(1).ReadRaster(...)` returns `struct.pack` bytes filled
-with a fixed float value (1.5). Geotransforms used:
-- hrsl-1.tif: `(-180.0, 0.1, 0, 90.0, 0, -0.1)`
-- hrsl-2.tif: `(-180.0, 0.01, 0, 90.0, 0, -0.01)`
-- hrsl-3.tif: `(-180.0, 0.001, 0, 90.0, 0, -0.001)`
-
-**Test cases** (matching deploy.sh phase 8):
-
-| Precision | lon | lat | Expected shape | Status |
-|---|---|---|---|---|
-| 0 digits | `-122` | `38` | 10×10 | 200 |
-| 1 digit | `-122.3` | `37.8` | 10×10 | 200 |
-| 2 digits | `-122.27` | `37.80` | 10×10 | 200 |
-| 3 digits | `-122.271` | `37.804` | 1×1 | 200 |
-| 4 digits | `-122.2713` | `37.8043` | — | 400 |
-| missing params | — | — | — | 400 |
-
-Also test `decimal_precision()` directly: `'38'→0`, `'37.8'→1`, `'37.80'→2`, `'-122.271'→3`.
-
-**File modified**: `lambda.py` — append `import unittest` and `LambdaTests` class.
-
----
-
-## Part 2: C++ port
-
-### Architecture
+## Architecture
 
 - Language: C++17
-- Lambda runtime: `awslabs/aws-lambda-cpp` (same as Clanker reference project)
+- Lambda runtime: `awslabs/aws-lambda-cpp`
 - GDAL: compiled from source, minimal (GTiff + /vsis3/ only, static)
 - AWS SDK: `aws-sdk-cpp` core only (Lambda JSON; GDAL handles /vsis3/ auth via credential chain)
 - Deployment: ZIP-based `provided.al2023` custom runtime, ARM64
 - Built entirely inside Docker (no local Mac tooling required)
 
-### New files
+## Files
 
 | File | Purpose |
 |---|---|
@@ -59,7 +18,7 @@ Also test `decimal_precision()` directly: `'38'→0`, `'37.8'→1`, `'37.80'→2
 | `cpp/Dockerfile` | Multi-stage: build deps → GDAL → aws-lambda-cpp → aws-sdk-cpp → app → zip |
 | `cpp/build.sh` | Runs Docker build and extracts `lambda-cpp.zip` to project root |
 
-### C++ handler design (`cpp/lambda.cpp`)
+## C++ handler design (`cpp/lambda.cpp`)
 
 1. Parse Lambda event JSON (`Aws::Utils::Json::JsonValue`) — extract `queryStringParameters.lon/lat`
 2. Replicate `decimal_precision()` — count chars after `.`
@@ -72,7 +31,7 @@ Also test `decimal_precision()` directly: `'38'→0`, `'37.8'→1`, `'37.80'→2
 
 `DATA_BUCKET_NAME` read via `std::getenv("DATA_BUCKET_NAME")`.
 
-### GDAL build flags (minimal)
+## GDAL build flags (minimal)
 
 ```cmake
 cmake /src/gdal \
@@ -91,18 +50,18 @@ cmake /src/gdal \
 
 GDAL fetched from `https://github.com/OSGeo/gdal/releases` at build time for reproducibility.
 
-### Docker layer order (cache-efficient)
+## Docker layer order (cache-efficient)
 
 1. Base: `public.ecr.aws/lambda/provided:al2023`
 2. Build tools: cmake, gcc-c++, make, git, tar, openssl-devel, libcurl-devel, zlib-devel, sqlite-devel
 3. Build GDAL from source (expensive — cached)
 4. Build aws-lambda-cpp from source (expensive — cached)
 5. Build aws-sdk-cpp core-only from source (expensive — cached)
-6. `COPY cpp/lambda.cpp cpp/CMakeLists.txt /build/` — only this layer changes on code edits
+6. `COPY lambda.cpp CMakeLists.txt /build/` — only this layer changes on code edits
 7. Build app, zip bootstrap → `/lambda-cpp.zip`
 8. Final scratch stage
 
-### build.sh
+## build.sh
 
 ```bash
 docker build --target builder -t atgeo-cpp-builder cpp/
@@ -111,13 +70,12 @@ docker cp ${CONTAINER_ID}:/lambda-cpp.zip ./lambda-cpp.zip
 docker rm ${CONTAINER_ID}
 ```
 
-### Local testing (immediate goal)
+## Local testing
 
 Use the Lambda RIE bundled in the base image:
 
 ```bash
 bash cpp/build.sh   # produces lambda-cpp.zip
-# Run via RIE inside the Lambda base container:
 docker run --rm -p 9000:8080 \
   -e DATA_BUCKET_NAME=atgeo-experiment-data-us-east-1-XXXX \
   -e AWS_DEFAULT_REGION=us-east-1 \
@@ -129,7 +87,7 @@ curl -XPOST http://localhost:9000/2015-03-31/functions/function/invocations \
   -d '{"queryStringParameters":{"lon":"-122","lat":"38"}}'
 ```
 
-### CloudFormation + deploy.sh integration (after local verification)
+## CloudFormation + deploy.sh integration (after local verification)
 
 Add `LambdaFunctionCpp` resource to `application-template.yaml` (same role, same data bucket env var,
 `Runtime: provided.al2023`, `PackageType: Zip`, `S3Key: lambda-cpp.zip`).
@@ -140,15 +98,7 @@ Add phases to `deploy.sh`:
 - Pass `LambdaCppPackageKey` parameter to application stack
 - Smoke test the C++ function URL with the same 5 cases
 
----
-
 ## Verification
-
-**Python tests:**
-```bash
-python -m unittest lambda
-```
-All 6+ test cases pass without network access.
 
 **C++ local:**
 ```bash
