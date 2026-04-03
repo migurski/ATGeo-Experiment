@@ -1,16 +1,23 @@
 import json
-import time
-import urllib.request
+import os
+from osgeo import gdal
 
 def handler(event, context):
-    start_time = time.time()
-    path = event['requestContext']['http']['path']
-    got = urllib.request.urlopen(f'https://planscore.s3.amazonaws.com{path}')
-    data = json.load(got)
-    elapsed = round((time.time()  - start_time) * 1000, 2)
-    response = dict(elapsed=elapsed, description=data['description'], message=data['message'])
+    path = event['requestContext']['http']['path'].lstrip('/')
+    bucket = os.environ['DATA_BUCKET_NAME']
+
+    ds = gdal.Open(f'/vsis3/{bucket}/{path}')
+    info = dict(
+        key=path,
+        width=ds.RasterXSize,
+        height=ds.RasterYSize,
+        bands=ds.RasterCount,
+        projection=ds.GetProjection(),
+    )
+    ds = None
+
     return {
         'statusCode': 200,
         'headers': {'Content-Type': 'application/json'},
-        'body': json.dumps(response) + '\n'
+        'body': json.dumps(info) + '\n',
     }

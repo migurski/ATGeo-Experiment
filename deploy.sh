@@ -9,20 +9,41 @@ aws cloudformation deploy \
     --template-file bootstrap-template.yaml \
     --no-fail-on-empty-changeset
 
-# Phase 2: Retrieve deployment bucket name
+# Phase 2: Retrieve bootstrap stack outputs
 deployment_bucket_name=$(aws cloudformation describe-stacks \
     --stack-name "${bootstrap_stack_name}" \
     --query "Stacks[0].Outputs[?OutputKey=='DeploymentBucketName'].OutputValue" \
     --output text)
 
+image_repository_uri=$(aws cloudformation describe-stacks \
+    --stack-name "${bootstrap_stack_name}" \
+    --query "Stacks[0].Outputs[?OutputKey=='ImageRepositoryUri'].OutputValue" \
+    --output text)
+
 echo "Deployment bucket: ${deployment_bucket_name}"
+echo "Image repository: ${image_repository_uri}"
 
-# Phase 3: Build lambda.zip
-rm -f lambda.zip
-zip -j lambda.zip lambda.py
+# Phase 3: Build Docker image for ARM64
+image_tag=$(git rev-parse --short HEAD)
+image_uri="${image_repository_uri}:${image_tag}"
 
-# Phase 4: Upload lambda.zip to S3
-aws s3 cp lambda.zip "s3://${deployment_bucket_name}/lambda.zip"
+docker buildx build \
+    --platform linux/arm64 \
+    --tag "${image_uri}" \
+    --load \
+    .
+
+# Phase 4: Push image to ECR
+aws_region=$(aws configure get region)
+aws_account_id=$(aws sts get-caller-identity --query Account --output text)
+
+aws ecr get-login-password --region "${aws_region}" \
+    | docker login \
+        --username AWS \
+        --password-stdin \
+        "${aws_account_id}.dkr.ecr.${aws_region}.amazonaws.com"
+
+docker push "${image_uri}"
 
 # Phase 4b: Stage geotiffs to bootstrap bucket
 aws s3 sync geotiffs/ "s3://${deployment_bucket_name}/geotiffs/"
@@ -34,7 +55,7 @@ aws cloudformation deploy \
     --capabilities CAPABILITY_NAMED_IAM \
     --parameter-overrides \
         BootstrapStackName="${bootstrap_stack_name}" \
-        LambdaPackageKey='lambda.zip' \
+        ImageUri="${image_uri}" \
     --no-fail-on-empty-changeset
 
 # Phase 6: Sync geotiffs to data bucket

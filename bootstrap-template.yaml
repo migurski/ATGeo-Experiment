@@ -14,9 +14,40 @@ Resources:
         IgnorePublicAcls: true
         RestrictPublicBuckets: true
 
+  ImageRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: atgeo-experiment
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      LifecyclePolicy:
+        LifecyclePolicyText: |
+          {
+            "rules": [
+              {
+                "rulePriority": 1,
+                "description": "Keep last 10 images",
+                "selection": {
+                  "tagStatus": "any",
+                  "countType": "imageCountMoreThan",
+                  "countNumber": 10
+                },
+                "action": {
+                  "type": "expire"
+                }
+              }
+            ]
+          }
+
 Outputs:
   DeploymentBucketName:
     Description: Name of the S3 bucket for Lambda deployment packages
     Value: !Ref DeploymentBucket
     Export:
       Name: !Sub '${AWS::StackName}-DeploymentBucketName'
+
+  ImageRepositoryUri:
+    Description: URI of the ECR repository for Lambda Docker images
+    Value: !GetAtt ImageRepository.RepositoryUri
+    Export:
+      Name: !Sub '${AWS::StackName}-ImageRepositoryUri'

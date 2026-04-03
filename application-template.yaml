@@ -5,12 +5,11 @@ Parameters:
   BootstrapStackName:
     Type: String
     Default: atgeo-experiment-bootstrap
-    Description: Name of the bootstrap stack to import deployment bucket name from
+    Description: Name of the bootstrap stack to import resource names from
 
-  LambdaPackageKey:
+  ImageUri:
     Type: String
-    Default: lambda.zip
-    Description: S3 key for the Lambda deployment package
+    Description: ECR image URI including tag for the Lambda function
 
 Resources:
   DataBucket:
@@ -49,16 +48,17 @@ Resources:
     Type: AWS::Lambda::Function
     Properties:
       FunctionName: atgeo-experiment
-      Runtime: python3.14
-      Handler: lambda.handler
+      PackageType: Image
+      Architectures:
+        - arm64
       Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 60
+      MemorySize: 512
       Environment:
         Variables:
           DATA_BUCKET_NAME: !Ref DataBucket
       Code:
-        S3Bucket: !ImportValue
-          'Fn::Sub': '${BootstrapStackName}-DeploymentBucketName'
-        S3Key: !Ref LambdaPackageKey
+        ImageUri: !Ref ImageUri
 
   LambdaFunctionUrl:
     Type: AWS::Lambda::Url
