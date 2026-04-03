@@ -15,9 +15,30 @@ RUN dnf install -y \
     libcurl-devel \
     zlib-devel \
     sqlite-devel \
+    pcre2-devel \
+    pkgconf \
     && dnf clean all
 
 WORKDIR /build
+
+# Build PROJ (required by GDAL, no optional drivers needed)
+ARG PROJ_VERSION=9.5.1
+RUN wget -q "https://github.com/OSGeo/PROJ/releases/download/${PROJ_VERSION}/proj-${PROJ_VERSION}.tar.gz" \
+    && tar xf proj-${PROJ_VERSION}.tar.gz \
+    && mkdir proj-build \
+    && cd proj-build \
+    && cmake /build/proj-${PROJ_VERSION} \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_INSTALL_PREFIX=/usr/local \
+        -DBUILD_SHARED_LIBS=OFF \
+        -DBUILD_TESTING=OFF \
+        -DENABLE_TIFF=OFF \
+        -DENABLE_CURL=OFF \
+        -DBUILD_APPS=OFF \
+    && make -j$(nproc) \
+    && make install \
+    && cd /build \
+    && rm -rf proj-${PROJ_VERSION} proj-${PROJ_VERSION}.tar.gz proj-build
 
 # Build minimal GDAL (GTiff + /vsis3/ only, static)
 ARG GDAL_VERSION=3.10.2
@@ -83,7 +104,7 @@ RUN mkdir /build/app-build \
     && make -j$(nproc) \
     && make aws-lambda-package-atgeo-cpp
 
-RUN mv /build/app-build/atgeo-cpp.zip /lambda-cpp.zip
+RUN mv /build/app-build/bootstrap.zip /lambda-cpp.zip
 
 # Final stage — export only the zip
 FROM scratch
