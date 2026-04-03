@@ -75,8 +75,8 @@ invocation_response handler(invocation_request const& request) {
 
         // Round coordinate to detected precision, then build extent
         double factor = std::pow(10.0, precision);
-        double lon_c = std::round(std::round(lon * factor) / factor * factor) / factor;
-        double lat_c = std::round(std::round(lat * factor) / factor * factor) / factor;
+        double lon_c = std::round(lon * factor) / factor;
+        double lat_c = std::round(lat * factor) / factor;
         double xmin = lon_c - half;
         double xmax = lon_c + half;
         double ymin = lat_c - half;
