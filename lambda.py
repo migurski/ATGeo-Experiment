@@ -55,6 +55,7 @@ def handler(event, context):
     ds = None
 
     floats = struct.unpack(f'{xsize * ysize}f', raw)
+    total = round(sum(0.0 if math.isnan(v) else float(v) for v in floats), 1)
     matrix = [
         [None if math.isnan(v) else round(float(v), 1) for v in floats[row * xsize:(row + 1) * xsize]]
         for row in range(ysize)
@@ -69,6 +70,7 @@ def handler(event, context):
             uly=round(ymax, prec),
             dx=step,
             dy=-step,
+            total=total,
             data=matrix,
         )) + '\n',
     }
