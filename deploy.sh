@@ -24,6 +24,9 @@ zip -j lambda.zip lambda.py
 # Phase 4: Upload lambda.zip to S3
 aws s3 cp lambda.zip "s3://${deployment_bucket_name}/lambda.zip"
 
+# Phase 4b: Stage geotiffs to bootstrap bucket
+aws s3 sync geotiffs/ "s3://${deployment_bucket_name}/geotiffs/"
+
 # Phase 5: Deploy application stack
 aws cloudformation deploy \
     --stack-name "${app_stack_name}" \
@@ -42,7 +45,7 @@ data_bucket_name=$(aws cloudformation describe-stacks \
 
 echo "Data bucket: ${data_bucket_name}"
 
-aws s3 sync geotiffs/ "s3://${data_bucket_name}/"
+aws s3 sync "s3://${deployment_bucket_name}/geotiffs/" "s3://${data_bucket_name}/"
 
 # Phase 7: Print function URL
 function_url=$(aws cloudformation describe-stacks \
