@@ -2,6 +2,8 @@ import json
 import math
 import os
 import struct
+import unittest
+from unittest.mock import MagicMock, patch
 
 from osgeo import gdal
 
@@ -74,3 +76,107 @@ def handler(event, context):
             data=matrix,
         )) + '\n',
     }
+
+
+def _make_mock_ds(gt):
+    """Return a mock GDAL dataset with given GeoTransform and ReadRaster returning 1.5 floats."""
+    def fake_read_raster(xoff, yoff, xsize, ysize):
+        return struct.pack(f'{xsize * ysize}f', *([1.5] * (xsize * ysize)))
+
+    band = MagicMock()
+    band.ReadRaster.side_effect = fake_read_raster
+
+    ds = MagicMock()
+    ds.GetGeoTransform.return_value = gt
+    ds.GetRasterBand.return_value = band
+    return ds
+
+
+# GeoTransforms matching each HRSL file's pixel size
+_GT = {
+    'hrsl-1.tif': (-180.0, 0.1,   0, 90.0, 0, -0.1),
+    'hrsl-2.tif': (-180.0, 0.01,  0, 90.0, 0, -0.01),
+    'hrsl-3.tif': (-180.0, 0.001, 0, 90.0, 0, -0.001),
+}
+
+
+def _patched_gdal_open(path, *args, **kwargs):
+    tif = path.split('/')[-1]
+    return _make_mock_ds(_GT[tif])
+
+
+class LambdaTests(unittest.TestCase):
+
+    def _call(self, lon, lat):
+        event = {'queryStringParameters': {'lon': lon, 'lat': lat}}
+        with patch.dict(os.environ, {'DATA_BUCKET_NAME': 'test-bucket'}):
+            with patch('lambda.gdal.Open', side_effect=_patched_gdal_open):
+                return handler(event, None)
+
+    # --- decimal_precision ---
+
+    def test_precision_integer(self):
+        self.assertEqual(decimal_precision('38'), 0)
+        self.assertEqual(decimal_precision('-122'), 0)
+
+    def test_precision_one_digit(self):
+        self.assertEqual(decimal_precision('37.8'), 1)
+
+    def test_precision_two_digits_trailing_zero(self):
+        self.assertEqual(decimal_precision('37.80'), 2)
+
+    def test_precision_three_digits(self):
+        self.assertEqual(decimal_precision('-122.271'), 3)
+
+    # --- handler: error cases ---
+
+    def test_missing_params(self):
+        with patch.dict(os.environ, {'DATA_BUCKET_NAME': 'test-bucket'}):
+            resp = handler({}, None)
+        self.assertEqual(resp['statusCode'], 400)
+
+    def test_precision_too_high(self):
+        resp = self._call('-122.2713', '37.8043')
+        self.assertEqual(resp['statusCode'], 400)
+
+    # --- handler: shape checks ---
+
+    def test_zero_digits_10x10(self):
+        resp = self._call('-122', '38')
+        self.assertEqual(resp['statusCode'], 200)
+        data = json.loads(resp['body'])['data']
+        self.assertEqual(len(data), 10)
+        self.assertEqual(len(data[0]), 10)
+
+    def test_one_digit_10x10(self):
+        resp = self._call('-122.3', '37.8')
+        self.assertEqual(resp['statusCode'], 200)
+        data = json.loads(resp['body'])['data']
+        self.assertEqual(len(data), 10)
+        self.assertEqual(len(data[0]), 10)
+
+    def test_two_digits_10x10(self):
+        resp = self._call('-122.27', '37.80')
+        self.assertEqual(resp['statusCode'], 200)
+        data = json.loads(resp['body'])['data']
+        self.assertEqual(len(data), 10)
+        self.assertEqual(len(data[0]), 10)
+
+    def test_three_digits_1x1(self):
+        resp = self._call('-122.271', '37.804')
+        self.assertEqual(resp['statusCode'], 200)
+        data = json.loads(resp['body'])['data']
+        self.assertEqual(len(data), 1)
+        self.assertEqual(len(data[0]), 1)
+
+    # --- handler: envelope keys present ---
+
+    def test_envelope_keys(self):
+        resp = self._call('-122.3', '37.8')
+        body = json.loads(resp['body'])
+        for key in ('ulx', 'uly', 'dx', 'dy', 'total', 'data'):
+            self.assertIn(key, body)
+
+
+if __name__ == '__main__':
+    unittest.main()
