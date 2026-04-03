@@ -120,13 +120,17 @@ invocation_response handler(invocation_request const& request) {
         // Build body JSON manually for the nested array
         std::ostringstream body;
         body << "{";
-        // ulx / uly rounded to out_prec decimal places
-        auto round_to = [&](double v, int p) -> double {
+        // ulx / uly rounded to out_prec decimal places, written with fixed
+        // precision so default stream sig-figs don't truncate trailing digits
+        auto fmt_coord = [&](double v, int p) -> std::string {
             double f = std::pow(10.0, p);
-            return std::round(v * f) / f;
+            double rounded = std::round(v * f) / f;
+            char buf[32];
+            std::snprintf(buf, sizeof(buf), "%.*f", p, rounded);
+            return buf;
         };
-        body << "\"ulx\":" << round_to(xmin, out_prec) << ",";
-        body << "\"uly\":" << round_to(ymax, out_prec) << ",";
+        body << "\"ulx\":" << fmt_coord(xmin, out_prec) << ",";
+        body << "\"uly\":" << fmt_coord(ymax, out_prec) << ",";
         body << "\"dx\":" << step << ",";
         body << "\"dy\":" << (-step) << ",";
         body << "\"total\":" << total << ",";
