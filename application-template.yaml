@@ -1,0 +1,59 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Application stack for ATGeo-Experiment - Lambda function and URL'
+
+Parameters:
+  BootstrapStackName:
+    Type: String
+    Default: atgeo-experiment-bootstrap
+    Description: Name of the bootstrap stack to import deployment bucket name from
+
+  LambdaPackageKey:
+    Type: String
+    Default: lambda.zip
+    Description: S3 key for the Lambda deployment package
+
+Resources:
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: atgeo-experiment-lambda-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+
+  LambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: atgeo-experiment
+      Runtime: python3.14
+      Handler: lambda.handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        S3Bucket: !ImportValue
+          'Fn::Sub': '${BootstrapStackName}-DeploymentBucketName'
+        S3Key: !Ref LambdaPackageKey
+
+  LambdaFunctionUrl:
+    Type: AWS::Lambda::Url
+    Properties:
+      AuthType: NONE
+      TargetFunctionArn: !Ref LambdaFunction
+
+  LambdaFunctionUrlPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref LambdaFunction
+      Action: lambda:InvokeFunctionUrl
+      Principal: '*'
+      FunctionUrlAuthType: NONE
+
+Outputs:
+  FunctionUrl:
+    Description: Public URL for the Lambda function
+    Value: !GetAtt LambdaFunctionUrl.FunctionUrl
