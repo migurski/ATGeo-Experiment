@@ -1,0 +1,155 @@
+openapi: '3.1.0'
+info:
+  title: ATGeo Population Density API
+  version: '1.0'
+  description: >
+    Returns a 2D population density matrix from HRSL GeoTIFFs based on the
+    decimal precision of the supplied coordinates. The caller drills down by
+    increasing precision until reaching a cell of interest.
+
+servers:
+  - url: https://qndokzuxd5jnwc4wgixfhgei2m0kylnx.lambda-url.us-east-1.on.aws
+    description: Python Lambda (Docker, Ubuntu 24.04 + python3-gdal)
+  - url: https://lxlx4yy3hfduv3rhjfcyqywe3m0erncc.lambda-url.us-east-1.on.aws
+    description: C++ Lambda (provided.al2023, static GDAL 3.10.2)
+
+paths:
+  /:
+    get:
+      summary: Query population density by coordinate
+      description: >
+        Accepts a longitude and latitude as query parameters. The number of
+        decimal digits supplied (minimum of lon and lat) determines which
+        GeoTIFF is read and what window size is returned.
+
+
+        | Precision | Source file | Window | Output grid |
+        |-----------|-------------|--------|-------------|
+        | 0 digits  | hrsl-1.tif  | 1°×1°  | 10×10       |
+        | 1 digit   | hrsl-2.tif  | 0.1°×0.1° | 10×10   |
+        | 2 digits  | hrsl-3.tif  | 0.01°×0.01° | 10×10 |
+        | 3 digits  | hrsl-3.tif  | 0.001°×0.001° | 1×1 |
+        | 4+ digits | —           | —      | HTTP 400    |
+
+
+        Coordinates are rounded to the detected precision and the window is
+        centred on that rounded value. Pixels are read directly from S3 via
+        GDAL's `/vsis3/` virtual filesystem with no intermediate download.
+
+      parameters:
+        - name: lon
+          in: query
+          required: true
+          description: >
+            Longitude in decimal degrees. The number of digits after the
+            decimal point determines the precision level (trailing zeros are
+            significant: `-122.30` is 2-digit precision, not 1).
+          schema:
+            type: string
+            examples:
+              - '-122'
+              - '-122.3'
+              - '-122.27'
+              - '-122.271'
+
+        - name: lat
+          in: query
+          required: true
+          description: >
+            Latitude in decimal degrees. The effective precision is the
+            minimum of the lon and lat digit counts.
+          schema:
+            type: string
+            examples:
+              - '38'
+              - '37.8'
+              - '37.80'
+              - '37.804'
+
+      responses:
+        '200':
+          description: Population density matrix for the requested window
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DensityResponse'
+              examples:
+                zero_digits:
+                  summary: 0-digit precision (10×10 at 0.1° resolution)
+                  value:
+                    ulx: -122.5
+                    uly: 38.5
+                    dx: 0.1
+                    dy: -0.1
+                    total: 4535260.0
+                    data:
+                      - [3078.3, 2439.0, 801.5, 313.1, 1373.1, 5224.2, 19261.5, 420.2, 132.6, 33372.2]
+                three_digits:
+                  summary: 3-digit precision (1×1 at 0.001° resolution)
+                  value:
+                    ulx: -122.2715
+                    uly: 37.8045
+                    dx: 0.001
+                    dy: -0.001
+                    total: 12.5
+                    data:
+                      - [12.5]
+
+        '400':
+          description: Missing or out-of-range parameters
+          content:
+            text/plain:
+              schema:
+                type: string
+              examples:
+                missing:
+                  value: "Missing lon or lat\n"
+                too_precise:
+                  value: "ValueError: precision too high (max 3 digits)\n"
+
+components:
+  schemas:
+    DensityResponse:
+      type: object
+      required: [ulx, uly, dx, dy, total, data]
+      properties:
+        ulx:
+          type: number
+          description: >
+            Longitude of the upper-left corner of the returned window, rounded
+            to precision+1 decimal places.
+          example: -122.35
+        uly:
+          type: number
+          description: >
+            Latitude of the upper-left corner of the returned window, rounded
+            to precision+1 decimal places.
+          example: 37.85
+        dx:
+          type: number
+          description: Pixel width in degrees (positive, west→east).
+          example: 0.01
+        dy:
+          type: number
+          description: Pixel height in degrees (negative, north→south).
+          example: -0.01
+        total:
+          type: number
+          description: >
+            Sum of all non-null population values in the window, rounded to
+            1 decimal place.
+          example: 453526.0
+        data:
+          type: array
+          description: >
+            Row-major 2D matrix of population density values. The first row is
+            the northernmost; the first column is the westernmost. Cells with
+            no data (NaN in the source GeoTIFF) are returned as null.
+          items:
+            type: array
+            items:
+              type: number
+              nullable: true
+          example:
+            - [12.5, 8.3, null]
+            - [0.0, 4.1, 2.2]
