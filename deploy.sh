@@ -24,8 +24,7 @@ echo "Deployment bucket: ${deployment_bucket_name}"
 echo "Image repository: ${image_repository_uri}"
 
 # Phase 3: Build Docker image for ARM64
-image_tag=$(git rev-parse --short HEAD)
-image_uri="${image_repository_uri}:${image_tag}"
+image_uri="${image_repository_uri}:latest"
 
 docker buildx build \
     --platform linux/arm64 \
@@ -44,6 +43,10 @@ aws ecr get-login-password --region "${aws_region}" \
         "${aws_account_id}.dkr.ecr.${aws_region}.amazonaws.com"
 
 docker push "${image_uri}"
+
+# Resolve digest so CloudFormation always sees a change when the image changes
+image_digest=$(docker inspect --format='{{index .RepoDigests 0}}' "${image_uri}")
+image_uri="${image_digest}"
 
 # Phase 4b: Stage geotiffs to bootstrap bucket
 aws s3 sync geotiffs/ "s3://${deployment_bucket_name}/geotiffs/"
@@ -76,3 +79,24 @@ function_url=$(aws cloudformation describe-stacks \
 
 echo '----'
 echo "Function URL: ${function_url}"
+
+# Phase 8: Smoke tests
+echo '--- 0 digits (expect 10x10) ---'
+curl -sf "${function_url}?lon=-122&lat=38" \
+    | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['ulx'], d['uly'], d['dx'], d['dy'], len(d['data']), 'x', len(d['data'][0]))"
+
+echo '--- 1 digit (expect 10x10) ---'
+curl -sf "${function_url}?lon=-122.3&lat=37.8" \
+    | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['ulx'], d['uly'], d['dx'], d['dy'], len(d['data']), 'x', len(d['data'][0]))"
+
+echo '--- 2 digits (expect 10x10) ---'
+curl -sf "${function_url}?lon=-122.27&lat=37.80" \
+    | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['ulx'], d['uly'], d['dx'], d['dy'], len(d['data']), 'x', len(d['data'][0]))"
+
+echo '--- 3 digits (expect 1x1) ---'
+curl -sf "${function_url}?lon=-122.271&lat=37.804" \
+    | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['ulx'], d['uly'], d['dx'], d['dy'], len(d['data']), 'x', len(d['data'][0]))"
+
+echo '--- 4 digits (expect HTTP 400) ---'
+curl -s -o /dev/null -w "%{http_code}" "${function_url}?lon=-122.2713&lat=37.8043"
+echo
