@@ -20,21 +20,15 @@ paths:
       description: >
         Accepts a longitude and latitude as query parameters. The number of
         decimal digits supplied (minimum of lon and lat) determines which
-        GeoTIFF is read and what window size is returned.
-
-
-        | Precision | Source file | Window | Output grid |
-        |-----------|-------------|--------|-------------|
-        | 0 digits  | hrsl-1.tif  | 1°×1°  | 10×10       |
-        | 1 digit   | hrsl-2.tif  | 0.1°×0.1° | 10×10   |
-        | 2 digits  | hrsl-3.tif  | 0.01°×0.01° | 10×10 |
-        | 3 digits  | hrsl-3.tif  | 0.001°×0.001° | 1×1 |
-        | 4+ digits | —           | —      | HTTP 400    |
-
-
+        GeoTIFF is read and what window size is returned:
+        0 digits reads hrsl-1.tif with a 1°×1° window returning 10×10 values;
+        1 digit reads hrsl-2.tif with a 0.1°×0.1° window returning 10×10 values;
+        2 digits reads hrsl-3.tif with a 0.01°×0.01° window returning 10×10 values;
+        3 digits reads hrsl-3.tif with a 0.001°×0.001° window returning 1×1 value;
+        4 or more digits returns HTTP 400.
         Coordinates are rounded to the detected precision and the window is
         centred on that rounded value. Pixels are read directly from S3 via
-        GDAL's `/vsis3/` virtual filesystem with no intermediate download.
+        GDAL's /vsis3/ virtual filesystem with no intermediate download.
 
       parameters:
         - name: lon
