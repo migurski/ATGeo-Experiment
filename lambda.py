@@ -56,7 +56,7 @@ def handler(event, context):
 
     floats = struct.unpack(f'{xsize * ysize}f', raw)
     matrix = [
-        [None if math.isnan(v) else float(v) for v in floats[row * xsize:(row + 1) * xsize]]
+        [None if math.isnan(v) else round(float(v), 1) for v in floats[row * xsize:(row + 1) * xsize]]
         for row in range(ysize)
     ]
 
