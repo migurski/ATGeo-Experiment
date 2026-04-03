@@ -51,6 +51,11 @@ image_uri="${image_digest}"
 # Phase 4b: Stage geotiffs to bootstrap bucket
 aws s3 sync geotiffs/ "s3://${deployment_bucket_name}/geotiffs/"
 
+# Phase 4c: Build C++ Lambda and upload to deployment bucket
+bash cpp/build.sh
+cpp_package_key='lambda-cpp.zip'
+aws s3 cp lambda-cpp.zip "s3://${deployment_bucket_name}/${cpp_package_key}"
+
 # Phase 5: Deploy application stack
 aws cloudformation deploy \
     --stack-name "${app_stack_name}" \
@@ -59,6 +64,7 @@ aws cloudformation deploy \
     --parameter-overrides \
         BootstrapStackName="${bootstrap_stack_name}" \
         ImageUri="${image_uri}" \
+        CppPackageKey="${cpp_package_key}" \
     --no-fail-on-empty-changeset
 
 # Phase 6: Sync geotiffs to data bucket
@@ -71,32 +77,46 @@ echo "Data bucket: ${data_bucket_name}"
 
 aws s3 sync "s3://${deployment_bucket_name}/geotiffs/" "s3://${data_bucket_name}/"
 
-# Phase 7: Print function URL
+# Phase 7: Print function URLs
 function_url=$(aws cloudformation describe-stacks \
     --stack-name "${app_stack_name}" \
     --query "Stacks[0].Outputs[?OutputKey=='FunctionUrl'].OutputValue" \
     --output text)
 
+function_cpp_url=$(aws cloudformation describe-stacks \
+    --stack-name "${app_stack_name}" \
+    --query "Stacks[0].Outputs[?OutputKey=='FunctionCppUrl'].OutputValue" \
+    --output text)
+
 echo '----'
-echo "Function URL: ${function_url}"
+echo "Function URL (Python): ${function_url}"
+echo "Function URL (C++):    ${function_cpp_url}"
 
 # Phase 8: Smoke tests
-echo '--- 0 digits (expect 10x10) ---'
-curl -sf "${function_url}?lon=-122&lat=38" \
-    | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['ulx'], d['uly'], d['dx'], d['dy'], len(d['data']), 'x', len(d['data'][0]))"
+smoke_test() {
+    local label="$1"
+    local url="$2"
 
-echo '--- 1 digit (expect 10x10) ---'
-curl -sf "${function_url}?lon=-122.3&lat=37.8" \
-    | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['ulx'], d['uly'], d['dx'], d['dy'], len(d['data']), 'x', len(d['data'][0]))"
+    echo "--- ${label} 0 digits (expect 10x10) ---"
+    curl -sf "${url}?lon=-122&lat=38" \
+        | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['ulx'], d['uly'], d['dx'], d['dy'], len(d['data']), 'x', len(d['data'][0]))"
 
-echo '--- 2 digits (expect 10x10) ---'
-curl -sf "${function_url}?lon=-122.27&lat=37.80" \
-    | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['ulx'], d['uly'], d['dx'], d['dy'], len(d['data']), 'x', len(d['data'][0]))"
+    echo "--- ${label} 1 digit (expect 10x10) ---"
+    curl -sf "${url}?lon=-122.3&lat=37.8" \
+        | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['ulx'], d['uly'], d['dx'], d['dy'], len(d['data']), 'x', len(d['data'][0]))"
 
-echo '--- 3 digits (expect 1x1) ---'
-curl -sf "${function_url}?lon=-122.271&lat=37.804" \
-    | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['ulx'], d['uly'], d['dx'], d['dy'], len(d['data']), 'x', len(d['data'][0]))"
+    echo "--- ${label} 2 digits (expect 10x10) ---"
+    curl -sf "${url}?lon=-122.27&lat=37.80" \
+        | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['ulx'], d['uly'], d['dx'], d['dy'], len(d['data']), 'x', len(d['data'][0]))"
 
-echo '--- 4 digits (expect HTTP 400) ---'
-curl -s -o /dev/null -w "%{http_code}" "${function_url}?lon=-122.2713&lat=37.8043"
-echo
+    echo "--- ${label} 3 digits (expect 1x1) ---"
+    curl -sf "${url}?lon=-122.271&lat=37.804" \
+        | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['ulx'], d['uly'], d['dx'], d['dy'], len(d['data']), 'x', len(d['data'][0]))"
+
+    echo "--- ${label} 4 digits (expect HTTP 400) ---"
+    curl -s -o /dev/null -w "%{http_code}" "${url}?lon=-122.2713&lat=37.8043"
+    echo
+}
+
+smoke_test "Python" "${function_url}"
+smoke_test "C++" "${function_cpp_url}"
