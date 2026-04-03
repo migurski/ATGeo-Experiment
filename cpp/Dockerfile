@@ -95,6 +95,7 @@ RUN git clone --recurse-submodules --depth 1 --branch 1.11.442 \
     && rm -rf aws-sdk-cpp
 
 # Build the Lambda function (only this layer changes on source edits)
+ARG CACHE_BUST=1
 COPY lambda.cpp CMakeLists.txt /build/app/
 RUN mkdir /build/app-build \
     && cd /build/app-build \
