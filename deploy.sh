@@ -53,7 +53,8 @@ aws s3 sync geotiffs/ "s3://${deployment_bucket_name}/geotiffs/"
 
 # Phase 4c: Build C++ Lambda and upload to deployment bucket
 bash cpp/build.sh
-cpp_package_key='lambda-cpp.zip'
+cpp_hash=$(md5 -q lambda-cpp.zip)
+cpp_package_key="lambda-cpp-${cpp_hash}.zip"
 aws s3 cp lambda-cpp.zip "s3://${deployment_bucket_name}/${cpp_package_key}"
 
 # Phase 5: Deploy application stack
