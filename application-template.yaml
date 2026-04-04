@@ -64,20 +64,6 @@ Resources:
       Code:
         ImageUri: !Ref ImageUri
 
-  LambdaFunctionUrl:
-    Type: AWS::Lambda::Url
-    Properties:
-      AuthType: NONE
-      TargetFunctionArn: !Ref LambdaFunction
-
-  LambdaFunctionUrlPermission:
-    Type: AWS::Lambda::Permission
-    Properties:
-      FunctionName: !Ref LambdaFunction
-      Action: lambda:InvokeFunctionUrl
-      Principal: '*'
-      FunctionUrlAuthType: NONE
-
   LambdaFunctionCpp:
     Type: AWS::Lambda::Function
     Properties:
@@ -112,14 +98,73 @@ Resources:
       Principal: '*'
       FunctionUrlAuthType: NONE
 
-Outputs:
-  FunctionUrl:
-    Description: Public URL for the Lambda function
-    Value: !GetAtt LambdaFunctionUrl.FunctionUrl
+  CppCertificate:
+    Type: AWS::CertificateManager::Certificate
+    Properties:
+      DomainName: atgeo-experiment.teczno.com
+      ValidationMethod: DNS
 
+  CppCachePolicy:
+    Type: AWS::CloudFront::CachePolicy
+    Properties:
+      CachePolicyConfig:
+        Name: atgeo-experiment-cache-policy
+        Comment: Cache forever keyed on lon+lat query params
+        DefaultTTL: 3600   # 1 hour
+        MinTTL: 0
+        MaxTTL: 3600
+        ParametersInCacheKeyAndForwardedToOrigin:
+          EnableAcceptEncodingGzip: true
+          EnableAcceptEncodingBrotli: true
+          QueryStringsConfig:
+            QueryStringBehavior: whitelist
+            QueryStrings:
+              - lon
+              - lat
+          HeadersConfig:
+            HeaderBehavior: none
+          CookiesConfig:
+            CookieBehavior: none
+
+  CppCloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Aliases:
+          - atgeo-experiment.teczno.com
+        Comment: ATGeo Experiment C++ Lambda
+        DefaultCacheBehavior:
+          AllowedMethods: [GET, HEAD, OPTIONS]
+          CachePolicyId: !Ref CppCachePolicy
+          OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac  # AllViewerExceptHostHeader
+          TargetOriginId: CppLambdaOrigin
+          ViewerProtocolPolicy: redirect-to-https
+        Enabled: true
+        HttpVersion: http2
+        Origins:
+          - Id: CppLambdaOrigin
+            DomainName: !Select
+              - 2
+              - !Split ['/', !GetAtt LambdaFunctionCppUrl.FunctionUrl]
+            CustomOriginConfig:
+              OriginProtocolPolicy: https-only
+        ViewerCertificate:
+          AcmCertificateArn: !Ref CppCertificate
+          MinimumProtocolVersion: TLSv1.2_2021
+          SslSupportMethod: sni-only
+
+Outputs:
   FunctionCppUrl:
-    Description: Public URL for the C++ Lambda function
+    Description: Direct Lambda URL for the C++ function (not publicly advertised)
     Value: !GetAtt LambdaFunctionCppUrl.FunctionUrl
+
+  FunctionCppCustomDomain:
+    Description: Custom domain URL for the C++ Lambda function
+    Value: https://atgeo-experiment.teczno.com/
+
+  CppCloudFrontDomain:
+    Description: CloudFront domain name — create a CNAME from atgeo-experiment.teczno.com to this value
+    Value: !GetAtt CppCloudFrontDistribution.DomainName
 
   DataBucketName:
     Description: Name of the S3 bucket for geotiff data files

@@ -8,9 +8,7 @@ info:
     increasing precision until reaching a cell of interest.
 
 servers:
-  - url: https://qndokzuxd5jnwc4wgixfhgei2m0kylnx.lambda-url.us-east-1.on.aws
-    description: Python Lambda (Docker, Ubuntu 24.04 + python3-gdal)
-  - url: https://lxlx4yy3hfduv3rhjfcyqywe3m0erncc.lambda-url.us-east-1.on.aws
+  - url: https://atgeo-experiment.teczno.com/
     description: C++ Lambda (provided.al2023, static GDAL 3.10.2)
 
 paths:

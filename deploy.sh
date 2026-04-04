@@ -79,19 +79,25 @@ echo "Data bucket: ${data_bucket_name}"
 aws s3 sync "s3://${deployment_bucket_name}/geotiffs/" "s3://${data_bucket_name}/"
 
 # Phase 7: Print function URLs
-function_url=$(aws cloudformation describe-stacks \
-    --stack-name "${app_stack_name}" \
-    --query "Stacks[0].Outputs[?OutputKey=='FunctionUrl'].OutputValue" \
-    --output text)
-
 function_cpp_url=$(aws cloudformation describe-stacks \
     --stack-name "${app_stack_name}" \
     --query "Stacks[0].Outputs[?OutputKey=='FunctionCppUrl'].OutputValue" \
     --output text)
 
+function_cpp_custom_domain=$(aws cloudformation describe-stacks \
+    --stack-name "${app_stack_name}" \
+    --query "Stacks[0].Outputs[?OutputKey=='FunctionCppCustomDomain'].OutputValue" \
+    --output text)
+
+cloudfront_domain=$(aws cloudformation describe-stacks \
+    --stack-name "${app_stack_name}" \
+    --query "Stacks[0].Outputs[?OutputKey=='CppCloudFrontDomain'].OutputValue" \
+    --output text)
+
 echo '----'
-echo "Function URL (Python): ${function_url}"
-echo "Function URL (C++):    ${function_cpp_url}"
+echo "Function URL (C++ direct):  ${function_cpp_url}"
+echo "Function URL (C++ custom):  ${function_cpp_custom_domain}"
+echo "CloudFront domain (CNAME):  ${cloudfront_domain}"
 
 # Phase 8: Smoke tests
 smoke_test() {
@@ -119,5 +125,4 @@ smoke_test() {
     echo
 }
 
-smoke_test "Python" "${function_url}"
-smoke_test "C++" "${function_cpp_url}"
+smoke_test "C++" "${function_cpp_custom_domain}"
