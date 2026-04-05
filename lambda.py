@@ -35,7 +35,7 @@ def handler(event, context):
 
     lon = float(lon_str)
     lat = float(lat_str)
-    bucket = os.environ['DATA_BUCKET_NAME']
+    geotiff_dir = os.environ['GEOTIFF_DIR']
 
     if precision == 0:
         tif, step, half = 'degree-1digit.tif', 0.1, 0.5
@@ -53,7 +53,7 @@ def handler(event, context):
     xmin, xmax = lon_c - half, lon_c + half
     ymin, ymax = lat_c - half, lat_c + half
 
-    ds = gdal.Open(f'/vsis3/{bucket}/{tif}')
+    ds = gdal.Open(f'{geotiff_dir}/{tif}')
     gt = ds.GetGeoTransform()  # (ulx, dx, 0, uly, 0, dy)
     xoff = round((xmin - gt[0]) / gt[1])
     yoff = round((ymax - gt[3]) / gt[5])
@@ -97,13 +97,13 @@ def dgg_handler(event, context):
     if any(c not in geohash.ALPHABET for c in gh):
         return {'statusCode': 400, 'headers': {'Content-Type': 'text/plain'}, 'body':'ValueError: invalid geohash character\n'}
 
-    bucket = os.environ['DATA_BUCKET_NAME']
+    geotiff_dir = os.environ['GEOTIFF_DIR']
     plon1, plat1, plon2, plat2 = geohash.geohash2lonlats(gh)
 
     if len(gh) == 7:
         # At max depth, read a single pixel from the same-level TIFF
         tif = f'geohash-{len(gh)}char.tif'
-        ds = gdal.Open(f'/vsis3/{bucket}/{tif}')
+        ds = gdal.Open(f'{geotiff_dir}/{tif}')
         gt = ds.GetGeoTransform()
         lon_c = (plon1 + plon2) / 2
         lat_c = (plat1 + plat2) / 2
@@ -119,7 +119,7 @@ def dgg_handler(event, context):
         dy = plat1 - plat2  # negative
     else:
         tif = f'geohash-{len(gh) + 1}char.tif'
-        ds = gdal.Open(f'/vsis3/{bucket}/{tif}')
+        ds = gdal.Open(f'{geotiff_dir}/{tif}')
         gt = ds.GetGeoTransform()  # (ulx, dx, 0, uly, 0, dy)
 
         sub_areas = {}
@@ -199,7 +199,7 @@ class LambdaTests(unittest.TestCase):
 
     def _call(self, lon, lat):
         event = {'queryStringParameters': {'lon': lon, 'lat': lat}}
-        with patch.dict(os.environ, {'DATA_BUCKET_NAME': 'test-bucket'}):
+        with patch.dict(os.environ, {'GEOTIFF_DIR': '/vsis3/test-bucket'}):
             with patch('lambda.gdal.Open', side_effect=_patched_gdal_open):
                 return handler(event, None)
 
@@ -221,7 +221,7 @@ class LambdaTests(unittest.TestCase):
     # --- handler: error cases ---
 
     def test_missing_params(self):
-        with patch.dict(os.environ, {'DATA_BUCKET_NAME': 'test-bucket'}):
+        with patch.dict(os.environ, {'GEOTIFF_DIR': '/vsis3/test-bucket'}):
             resp = handler({}, None)
         self.assertEqual(resp['statusCode'], 400)
 
@@ -272,7 +272,7 @@ class DggHandlerTests(unittest.TestCase):
 
     def _call(self, gh):
         event = {'rawPath': '/dgg', 'queryStringParameters': {'geohash': gh}}
-        with patch.dict(os.environ, {'DATA_BUCKET_NAME': 'test-bucket'}):
+        with patch.dict(os.environ, {'GEOTIFF_DIR': '/vsis3/test-bucket'}):
             with patch('lambda.gdal.Open', side_effect=_patched_gdal_open):
                 return handler(event, None)
 
@@ -280,7 +280,7 @@ class DggHandlerTests(unittest.TestCase):
 
     def test_missing_geohash(self):
         event = {'rawPath': '/dgg', 'queryStringParameters': {}}
-        with patch.dict(os.environ, {'DATA_BUCKET_NAME': 'test-bucket'}):
+        with patch.dict(os.environ, {'GEOTIFF_DIR': '/vsis3/test-bucket'}):
             resp = handler(event, None)
         self.assertEqual(resp['statusCode'], 400)
 
@@ -340,7 +340,7 @@ class DggHandlerTests(unittest.TestCase):
         # /dgg path routes to dgg_handler; / path does not
         event_dgg = {'rawPath': '/dgg', 'queryStringParameters': {'geohash': 'u'}}
         event_root = {'rawPath': '/', 'queryStringParameters': {}}
-        with patch.dict(os.environ, {'DATA_BUCKET_NAME': 'test-bucket'}):
+        with patch.dict(os.environ, {'GEOTIFF_DIR': '/vsis3/test-bucket'}):
             with patch('lambda.gdal.Open', side_effect=_patched_gdal_open):
                 resp_dgg = handler(event_dgg, None)
             resp_root = handler(event_root, None)

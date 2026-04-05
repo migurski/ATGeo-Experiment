@@ -47,7 +47,7 @@ static BBox geohash2lonlats(const std::string& gh) {
 }
 
 static invocation_response dgg_handler(
-        const std::string& gh, const std::string& bucket) {
+        const std::string& gh, const std::string& geotiff_dir) {
 
     // Validation
     if (gh.empty()) {
@@ -85,7 +85,7 @@ static invocation_response dgg_handler(
     double dx = cbb.lon2 - cbb.lon1;
     double dy = cbb.lat1 - cbb.lat2;  // negative
 
-    std::string path = "/vsis3/" + bucket + "/" + tif;
+    std::string path = geotiff_dir + "/" + tif;
     GDALDataset* ds = static_cast<GDALDataset*>(GDALOpen(path.c_str(), GA_ReadOnly));
     if (!ds)
         return invocation_response::failure("GDALOpen failed for " + path, "GDALError");
@@ -173,17 +173,17 @@ invocation_response handler(invocation_request const& request) {
         if (view.KeyExists("rawPath")) raw_path = view.GetString("rawPath").c_str();
         else if (view.KeyExists("path")) raw_path = view.GetString("path").c_str();
 
-        const char* bucket_env = std::getenv("DATA_BUCKET_NAME");
-        if (!bucket_env)
-            return invocation_response::failure("DATA_BUCKET_NAME not set", "ConfigError");
-        std::string bucket(bucket_env);
+        const char* geotiff_dir_env = std::getenv("GEOTIFF_DIR");
+        if (!geotiff_dir_env)
+            return invocation_response::failure("GEOTIFF_DIR not set", "ConfigError");
+        std::string geotiff_dir(geotiff_dir_env);
 
         if (raw_path == "/dgg") {
             auto qsp = view.GetObject("queryStringParameters");
             std::string gh;
             if (qsp.IsObject() && qsp.KeyExists("geohash"))
                 gh = qsp.GetString("geohash").c_str();
-            return dgg_handler(gh, bucket);
+            return dgg_handler(gh, geotiff_dir);
         }
 
         auto qsp = view.GetObject("queryStringParameters");
@@ -238,7 +238,7 @@ invocation_response handler(invocation_request const& request) {
         double ymin = lat_c - half;
         double ymax = lat_c + half;
 
-        std::string path = "/vsis3/" + bucket + "/" + tif;
+        std::string path = geotiff_dir + "/" + tif;
         GDALDataset* ds = static_cast<GDALDataset*>(GDALOpen(path.c_str(), GA_ReadOnly));
         if (!ds)
             return invocation_response::failure("GDALOpen failed for " + path, "GDALError");

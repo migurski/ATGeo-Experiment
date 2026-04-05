@@ -60,7 +60,7 @@ Resources:
       MemorySize: 512
       Environment:
         Variables:
-          DATA_BUCKET_NAME: !Ref DataBucket
+          GEOTIFF_DIR: !Sub '/vsis3/${DataBucket}'
       Code:
         ImageUri: !Ref ImageUri
 
@@ -92,7 +92,7 @@ Resources:
       MemorySize: 512
       Environment:
         Variables:
-          DATA_BUCKET_NAME: !Ref DataBucket
+          GEOTIFF_DIR: !Sub '/vsis3/${DataBucket}'
       Code:
         S3Bucket: !ImportValue
           'Fn::Sub': '${BootstrapStackName}-DeploymentBucketName'
