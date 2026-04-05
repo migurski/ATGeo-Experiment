@@ -20,16 +20,31 @@
 
 ## C++ handler design (`cpp/lambda.cpp`)
 
+`DATA_BUCKET_NAME` read via `std::getenv("DATA_BUCKET_NAME")` at the top of `handler()`,
+before routing. `rawPath` (or `path`) determines which sub-handler is called.
+
+### Decimal-degrees handler (`/` or default)
+
 1. Parse Lambda event JSON (`Aws::Utils::Json::JsonValue`) — extract `queryStringParameters.lon/lat`
 2. Replicate `decimal_precision()` — count chars after `.`
-3. Precision → tif/step/half dispatch (same table as Python)
+3. Precision → tif/step/half dispatch — TIF names: `degree-1digit.tif`, `degree-2digit.tif`, `degree-3digit.tif`
 4. `GDALOpen(("/vsis3/" + bucket + "/" + tif).c_str(), GA_ReadOnly)` — uses AWS credential chain
 5. `GetGeoTransform`, compute xoff/yoff/xsize/ysize with integer rounding
 6. `GetRasterBand(1)->RasterIO(GF_Read, ...)` into a `float` buffer
 7. Build JSON response: `ulx`, `uly`, `dx`, `dy`, `total`, `data` (nested JSON array)
 8. Return `invocation_response::success(...)` or failure for errors
 
-`DATA_BUCKET_NAME` read via `std::getenv("DATA_BUCKET_NAME")`.
+### Geohash handler (`/dgg`) — `dgg_handler()`
+
+Port of Python `dgg_handler` and `geohash.geohash2lonlats()`:
+
+1. `geohash2lonlats(gh)` — decode each char to 5 bits via `GEOHASH_ALPHABET.find()`, split
+   interleaved bits into xbin/ybin, parse as binary fractions, scale to lon/lat
+2. Validate `geohash` param: present, 1–7 chars, all in `GEOHASH_ALPHABET`
+3. For 1–6 chars: open `geohash-(N+1)char.tif`, loop all 32 `GEOHASH_ALPHABET` children,
+   call `geohash2lonlats(child)`, compute center pixel offset, `RasterIO` 1×1 each
+4. For 7 chars: open `geohash-7char.tif`, read single pixel for the cell itself
+5. Build JSON: `{"geohash":…,"total":…,"sub-areas":{…}}` via `ostringstream`
 
 ## GDAL build flags (minimal)
 
