@@ -12,6 +12,62 @@ servers:
     description: C++ Lambda (provided.al2023, static GDAL 3.10.2)
 
 paths:
+  /dgg:
+    get:
+      summary: Query population density by geohash
+      description: >
+        Accepts a geohash string (1–7 characters) and returns the 32 next-level
+        sub-areas (one per geohash base-32 character). Each response includes a
+        population count for each child cell read directly from the corresponding
+        geohash GeoTIFF via GDAL's /vsis3/ virtual filesystem.
+
+      parameters:
+        - name: geohash
+          in: query
+          required: true
+          description: >
+            Geohash string using the standard base-32 alphabet
+            (0–9, b–z excluding a, i, l, o). Must be 1–7 characters.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 7
+            examples:
+              - 'u'
+              - 'u4p'
+              - 'u4pruyd'
+
+      responses:
+        '200':
+          description: Population density for each of the 32 child geohash cells
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GeohashResponse'
+              examples:
+                one_char:
+                  summary: 1-char geohash with 32 children
+                  value:
+                    geohash: 'u'
+                    total: 45000.0
+                    sub-areas:
+                      u0: {link: '/dgg?geohash=u0', count: 1234.5}
+                      u1: {link: '/dgg?geohash=u1', count: 0.0}
+
+        '400':
+          description: Missing, invalid, or too-long geohash
+          content:
+            text/plain:
+              schema:
+                type: string
+              examples:
+                missing:
+                  value: "Missing geohash\n"
+                too_long:
+                  value: "ValueError: geohash too long (max 7 characters)\n"
+                invalid_char:
+                  value: "ValueError: invalid geohash character\n"
+
   /:
     get:
       summary: Query population density by coordinate
@@ -101,6 +157,36 @@ paths:
 
 components:
   schemas:
+    GeohashResponse:
+      type: object
+      required: [geohash, total, sub-areas]
+      properties:
+        geohash:
+          type: string
+          description: The input geohash string.
+          example: 'u4p'
+        total:
+          type: number
+          description: Sum of all child population counts, rounded to 1 decimal place.
+          example: 45000.0
+        sub-areas:
+          type: object
+          description: >
+            Map of child geohash string to sub-area data. Keys are the input
+            geohash concatenated with each base-32 character (32 entries total).
+          additionalProperties:
+            type: object
+            required: [link, count]
+            properties:
+              link:
+                type: string
+                description: Relative URL to drill into this child cell.
+                example: '/dgg?geohash=u4p0'
+              count:
+                type: number
+                description: Population count for this child cell, rounded to 1 decimal place.
+                example: 1234.5
+
     DensityResponse:
       type: object
       required: [ulx, uly, dx, dy, total, data]

@@ -79,6 +79,11 @@ echo "Data bucket: ${data_bucket_name}"
 aws s3 sync "s3://${deployment_bucket_name}/geotiffs/" "s3://${data_bucket_name}/"
 
 # Phase 7: Print function URLs
+function_url=$(aws cloudformation describe-stacks \
+    --stack-name "${app_stack_name}" \
+    --query "Stacks[0].Outputs[?OutputKey=='FunctionUrl'].OutputValue" \
+    --output text)
+
 function_cpp_url=$(aws cloudformation describe-stacks \
     --stack-name "${app_stack_name}" \
     --query "Stacks[0].Outputs[?OutputKey=='FunctionCppUrl'].OutputValue" \
@@ -95,12 +100,13 @@ cloudfront_domain=$(aws cloudformation describe-stacks \
     --output text)
 
 echo '----'
-echo "Function URL (C++ direct):  ${function_cpp_url}"
-echo "Function URL (C++ custom):  ${function_cpp_custom_domain}"
-echo "CloudFront domain (CNAME):  ${cloudfront_domain}"
+echo "Function URL (Python direct): ${function_url}"
+echo "Function URL (C++ direct):    ${function_cpp_url}"
+echo "Function URL (C++ custom):    ${function_cpp_custom_domain}"
+echo "CloudFront domain (CNAME):    ${cloudfront_domain}"
 
 # Phase 8: Smoke tests
-smoke_test() {
+smoke_test_dd() {
     local label="$1"
     local url="$2"
 
@@ -125,4 +131,30 @@ smoke_test() {
     echo
 }
 
-smoke_test "C++" "${function_cpp_custom_domain}"
+smoke_test_dgg() {
+    local label="$1"
+    local url="$2"
+
+    echo "--- ${label} /dgg 1-char geohash (expect 32 sub-areas) ---"
+    curl -sf "${url}/dgg?geohash=u" \
+        | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['geohash'], 'total:', d['total'], 'sub-areas:', len(d['sub-areas']))"
+
+    echo "--- ${label} /dgg 3-char geohash (expect 32 sub-areas) ---"
+    curl -sf "${url}/dgg?geohash=u4p" \
+        | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['geohash'], 'total:', d['total'], 'sub-areas:', len(d['sub-areas']))"
+
+    echo "--- ${label} /dgg 7-char geohash (expect 32 sub-areas) ---"
+    curl -sf "${url}/dgg?geohash=u4pruyd" \
+        | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['geohash'], 'total:', d['total'], 'sub-areas:', len(d['sub-areas']))"
+
+    echo "--- ${label} /dgg 8-char geohash (expect HTTP 400) ---"
+    curl -s -o /dev/null -w "%{http_code}" "${url}/dgg?geohash=u4pruydq"
+    echo
+
+    echo "--- ${label} /dgg missing geohash (expect HTTP 400) ---"
+    curl -s -o /dev/null -w "%{http_code}" "${url}/dgg"
+    echo
+}
+
+smoke_test_dd "C++" "${function_cpp_custom_domain}"
+smoke_test_dgg "Python" "${function_url%/}"

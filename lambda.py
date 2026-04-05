@@ -7,6 +7,8 @@ from unittest.mock import MagicMock, patch
 
 from osgeo import gdal
 
+import geohash
+
 
 def decimal_precision(s):
     if '.' in s:
@@ -15,6 +17,10 @@ def decimal_precision(s):
 
 
 def handler(event, context):
+    path = event.get('rawPath') or event.get('path') or '/'
+    if path == '/dgg':
+        return dgg_handler(event, context)
+
     params = event.get('queryStringParameters') or {}
     lon_str = params.get('lon')
     lat_str = params.get('lat')
@@ -78,6 +84,71 @@ def handler(event, context):
     }
 
 
+def dgg_handler(event, context):
+    params = event.get('queryStringParameters') or {}
+    gh = params.get('geohash')
+
+    if not gh:
+        return {'statusCode': 400, 'body': 'Missing geohash\n'}
+
+    if len(gh) > 7:
+        return {'statusCode': 400, 'body': 'ValueError: geohash too long (max 7 characters)\n'}
+
+    if any(c not in geohash.ALPHABET for c in gh):
+        return {'statusCode': 400, 'body': 'ValueError: invalid geohash character\n'}
+
+    bucket = os.environ['DATA_BUCKET_NAME']
+
+    if len(gh) == 7:
+        # At max depth, read a single pixel from the same-level TIFF
+        tif = f'geohash-{len(gh)}char.tif'
+        ds = gdal.Open(f'/vsis3/{bucket}/{tif}')
+        gt = ds.GetGeoTransform()
+        lon1, lat1, lon2, lat2 = geohash.geohash2lonlats(gh)
+        lon_c = (lon1 + lon2) / 2
+        lat_c = (lat1 + lat2) / 2
+        xoff = int((lon_c - gt[0]) / gt[1])
+        yoff = int((lat_c - gt[3]) / gt[5])
+        raw = ds.GetRasterBand(1).ReadRaster(xoff, yoff, 1, 1)
+        ds = None
+        (val,) = struct.unpack('f', raw)
+        count = 0.0 if math.isnan(val) else round(float(val), 1)
+        sub_areas = {gh: {'link': f'/dgg?geohash={gh}', 'count': count}}
+        total = count
+    else:
+        tif = f'geohash-{len(gh) + 1}char.tif'
+        ds = gdal.Open(f'/vsis3/{bucket}/{tif}')
+        gt = ds.GetGeoTransform()  # (ulx, dx, 0, uly, 0, dy)
+
+        sub_areas = {}
+        total = 0.0
+
+        for c in geohash.ALPHABET:
+            child = gh + c
+            lon1, lat1, lon2, lat2 = geohash.geohash2lonlats(child)
+            lon_c = (lon1 + lon2) / 2
+            lat_c = (lat1 + lat2) / 2
+            xoff = int((lon_c - gt[0]) / gt[1])
+            yoff = int((lat_c - gt[3]) / gt[5])
+            raw = ds.GetRasterBand(1).ReadRaster(xoff, yoff, 1, 1)
+            (val,) = struct.unpack('f', raw)
+            count = 0.0 if math.isnan(val) else round(float(val), 1)
+            total += count
+            sub_areas[child] = {'link': f'/dgg?geohash={child}', 'count': count}
+
+        ds = None
+
+    return {
+        'statusCode': 200,
+        'headers': {'Content-Type': 'application/json'},
+        'body': json.dumps({
+            'geohash': gh,
+            'total': round(total, 1),
+            'sub-areas': sub_areas,
+        }) + '\n',
+    }
+
+
 def _make_mock_ds(gt):
     """Return a mock GDAL dataset with given GeoTransform and ReadRaster returning 1.5 floats."""
     def fake_read_raster(xoff, yoff, xsize, ysize):
@@ -93,10 +164,19 @@ def _make_mock_ds(gt):
 
 
 # GeoTransforms matching each HRSL file's pixel size
+# Geohash N-char TIFFs: width=8*4^ceil(N/2), height=4*4^floor(N/2) (approx)
+# For mocking we use the 1-char cell size: 360/8 x 180/4 degrees per pixel
 _GT = {
     'degree-1digit.tif': (-180.0, 0.1,   0, 90.0, 0, -0.1),
     'degree-2digit.tif': (-180.0, 0.01,  0, 90.0, 0, -0.01),
     'degree-3digit.tif': (-180.0, 0.001, 0, 90.0, 0, -0.001),
+    'geohash-2char.tif': (-180.0, 360.0/32, 0, 90.0, 0, -180.0/16),
+    'geohash-3char.tif': (-180.0, 360.0/128, 0, 90.0, 0, -180.0/64),
+    'geohash-4char.tif': (-180.0, 360.0/512, 0, 90.0, 0, -180.0/256),
+    'geohash-5char.tif': (-180.0, 360.0/2048, 0, 90.0, 0, -180.0/1024),
+    'geohash-6char.tif': (-180.0, 360.0/8192, 0, 90.0, 0, -180.0/4096),
+    'geohash-7char.tif': (-180.0, 360.0/32768, 0, 90.0, 0, -180.0/16384),
+    'geohash-8char.tif': (-180.0, 360.0/131072, 0, 90.0, 0, -180.0/65536),
 }
 
 
@@ -176,6 +256,77 @@ class LambdaTests(unittest.TestCase):
         body = json.loads(resp['body'])
         for key in ('ulx', 'uly', 'dx', 'dy', 'total', 'data'):
             self.assertIn(key, body)
+
+
+class DggHandlerTests(unittest.TestCase):
+
+    def _call(self, gh):
+        event = {'rawPath': '/dgg', 'queryStringParameters': {'geohash': gh}}
+        with patch.dict(os.environ, {'DATA_BUCKET_NAME': 'test-bucket'}):
+            with patch('lambda.gdal.Open', side_effect=_patched_gdal_open):
+                return handler(event, None)
+
+    # --- error cases ---
+
+    def test_missing_geohash(self):
+        event = {'rawPath': '/dgg', 'queryStringParameters': {}}
+        with patch.dict(os.environ, {'DATA_BUCKET_NAME': 'test-bucket'}):
+            resp = handler(event, None)
+        self.assertEqual(resp['statusCode'], 400)
+
+    def test_geohash_too_long(self):
+        resp = self._call('u4pruydq')  # 8 chars
+        self.assertEqual(resp['statusCode'], 400)
+
+    def test_invalid_geohash_char(self):
+        resp = self._call('u4a')  # 'a' not in ALPHABET
+        self.assertEqual(resp['statusCode'], 400)
+
+    # --- success cases ---
+
+    def test_returns_32_sub_areas(self):
+        resp = self._call('u')
+        self.assertEqual(resp['statusCode'], 200)
+        body = json.loads(resp['body'])
+        self.assertEqual(len(body['sub-areas']), 32)
+
+    def test_sub_area_keys_are_children(self):
+        resp = self._call('u4p')
+        body = json.loads(resp['body'])
+        for key in body['sub-areas']:
+            self.assertTrue(key.startswith('u4p'))
+            self.assertEqual(len(key), 4)
+
+    def test_response_keys(self):
+        resp = self._call('u')
+        body = json.loads(resp['body'])
+        for key in ('geohash', 'total', 'sub-areas'):
+            self.assertIn(key, body)
+
+    def test_sub_area_entry_shape(self):
+        resp = self._call('u')
+        body = json.loads(resp['body'])
+        entry = next(iter(body['sub-areas'].values()))
+        self.assertIn('link', entry)
+        self.assertIn('count', entry)
+
+    def test_seven_char_geohash(self):
+        resp = self._call('u4pruyd')
+        self.assertEqual(resp['statusCode'], 200)
+        body = json.loads(resp['body'])
+        self.assertEqual(len(body['sub-areas']), 1)
+        self.assertIn('u4pruyd', body['sub-areas'])
+
+    def test_dispatch_via_path(self):
+        # /dgg path routes to dgg_handler; / path does not
+        event_dgg = {'rawPath': '/dgg', 'queryStringParameters': {'geohash': 'u'}}
+        event_root = {'rawPath': '/', 'queryStringParameters': {}}
+        with patch.dict(os.environ, {'DATA_BUCKET_NAME': 'test-bucket'}):
+            with patch('lambda.gdal.Open', side_effect=_patched_gdal_open):
+                resp_dgg = handler(event_dgg, None)
+            resp_root = handler(event_root, None)
+        self.assertEqual(resp_dgg['statusCode'], 200)
+        self.assertEqual(resp_root['statusCode'], 400)
 
 
 if __name__ == '__main__':

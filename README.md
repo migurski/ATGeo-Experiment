@@ -78,3 +78,51 @@ further than two degrees of decimal precision because it gives away too much det
 you stop.
 
 <a href="https://www.openstreetmap.org/#map=16/37.80432/-122.27119"><img src="img/hrsl-3.png" width="100%"></a>
+
+## Geohash Drill-Down with `/dgg`
+
+The `/dgg` endpoint accepts a geohash string (1–7 characters) and returns the 32 next-level
+sub-areas corresponding to each character in the geohash base-32 alphabet.
+
+Let's use the same location, 14th & Broadway in Downtown Oakland, whose geohash is `u4pruydqqvj8`.
+
+### One-Character Geohash (~5000km)
+
+`u` covers most of northern Europe and Russia. Request
+`/dgg?geohash=u` to see all 32 two-character children:
+
+```JSON
+{
+    "geohash": "u",
+    "total": 234567890.0,
+    "sub-areas": {
+        "u0": {"link": "/dgg?geohash=u0", "count": 1234567.0},
+        "u1": {"link": "/dgg?geohash=u1", "count": 987654.0},
+        ...
+    }
+}
+```
+
+### Three-Character Geohash (~150km)
+
+`u4p` covers an area around Oslo, Norway. Request `/dgg?geohash=u4p`
+to see 32 four-character children, each roughly 40km across:
+
+```JSON
+{
+    "geohash": "u4p",
+    "total": 2345678.0,
+    "sub-areas": {
+        "u4p0": {"link": "/dgg?geohash=u4p0", "count": 12345.0},
+        "u4p1": {"link": "/dgg?geohash=u4p1", "count": 0.0},
+        ...
+    }
+}
+```
+
+### Seven-Character Geohash (~150m)
+
+`u4pruyd` narrows to a neighbourhood-scale cell. Request `/dgg?geohash=u4pruyd`
+to see 32 eight-character children. At this scale individual cells are roughly
+20m across — approaching the limit of HRSL precision — so most child counts
+will be small or zero.

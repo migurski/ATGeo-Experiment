@@ -64,6 +64,20 @@ Resources:
       Code:
         ImageUri: !Ref ImageUri
 
+  LambdaFunctionUrl:
+    Type: AWS::Lambda::Url
+    Properties:
+      AuthType: NONE
+      TargetFunctionArn: !Ref LambdaFunction
+
+  LambdaFunctionUrlPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref LambdaFunction
+      Action: lambda:InvokeFunctionUrl
+      Principal: '*'
+      FunctionUrlAuthType: NONE
+
   LambdaFunctionCpp:
     Type: AWS::Lambda::Function
     Properties:
@@ -154,6 +168,10 @@ Resources:
           SslSupportMethod: sni-only
 
 Outputs:
+  FunctionUrl:
+    Description: Direct Lambda URL for the Python function (for testing /dgg)
+    Value: !GetAtt LambdaFunctionUrl.FunctionUrl
+
   FunctionCppUrl:
     Description: Direct Lambda URL for the C++ function (not publicly advertised)
     Value: !GetAtt LambdaFunctionCppUrl.FunctionUrl
