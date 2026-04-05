@@ -84,45 +84,139 @@ you stop.
 The `/dgg` endpoint accepts a geohash string (1–7 characters) and returns the 32 next-level
 sub-areas corresponding to each character in the geohash base-32 alphabet.
 
-Let's use the same location, 14th & Broadway in Downtown Oakland, whose geohash is `u4pruydqqvj8`.
+Let's use the same location, 14th & Broadway in Downtown Oakland, whose geohash is `9q9p1dhf4u08v5`.
 
-### One-Character Geohash (~5000km)
+### One-Character Geohash (~1000km)
 
-`u` covers most of northern Europe and Russia. Request
-`/dgg?geohash=u` to see all 32 two-character children:
+`9` covers most of North America west of the Mississippi. Request
+[/dgg?geohash=9](/dgg?geohash=9) to see all 32 two-character children:
 
 ```JSON
 {
-    "geohash": "u",
-    "total": 234567890.0,
+    "geohash": "9",
+    "ulx": -135.0,
+    "uly": 45.0,
+    "dx": 11.25,
+    "dy": -5.625,
+    "total": 266698940.7,
     "sub-areas": {
-        "u0": {"link": "/dgg?geohash=u0", "count": 1234567.0},
-        "u1": {"link": "/dgg?geohash=u1", "count": 987654.0},
+        "9q": {"link": "/dgg?geohash=9q", "count": 35974940.0},
+        "9h": {"link": "/dgg?geohash=9h", "count": 8267192.0},
         ...
     }
 }
 ```
+
+Using a single geohash character you can identify yourself as one of 267 million people in
+western North America. The sub-area containing Oakland, `9q`, has 36 million people in it —
+a comfortably large anonymity set. It's safe to look deeper.
+
+### Two-Character Geohash (~300km)
+
+`9q` covers California and Nevada. Request [/dgg?geohash=9q](/dgg?geohash=9q):
+
+```JSON
+{
+    "geohash": "9q",
+    "ulx": -123.75,
+    "uly": 39.375,
+    "dx": 1.40625,
+    "dy": -1.40625,
+    "total": 36381211.3,
+    "sub-areas": {
+        "9q9": {"link": "/dgg?geohash=9q9", "count": 5601428.5},
+        "9qh": {"link": "/dgg?geohash=9qh", "count": 8267192.0},
+        ...
+    }
+}
+```
+
+The Bay Area falls in `9q9` with 5.6 million people. Still a large set. Look deeper.
 
 ### Three-Character Geohash (~150km)
 
-`u4p` covers an area around Oslo, Norway. Request `/dgg?geohash=u4p`
-to see 32 four-character children, each roughly 40km across:
+`9q9` covers the San Francisco Bay Area. Request [/dgg?geohash=9q9](/dgg?geohash=9q9):
 
 ```JSON
 {
-    "geohash": "u4p",
-    "total": 2345678.0,
+    "geohash": "9q9",
+    "ulx": -122.34375,
+    "uly": 37.96875,
+    "dx": 0.3515625,
+    "dy": -0.17578125,
+    "total": 5762927.5,
     "sub-areas": {
-        "u4p0": {"link": "/dgg?geohash=u4p0", "count": 12345.0},
-        "u4p1": {"link": "/dgg?geohash=u4p1", "count": 0.0},
+        "9q9p": {"link": "/dgg?geohash=9q9p", "count": 718015.1},
+        "9q9k": {"link": "/dgg?geohash=9q9k", "count": 956026.2},
         ...
     }
 }
 ```
 
-### Seven-Character Geohash (~150m)
+Oakland is in `9q9p` with 718K people. Still comfortable. Keep going.
 
-`u4pruyd` narrows to a neighbourhood-scale cell. Request `/dgg?geohash=u4pruyd`
-to see 32 eight-character children. At this scale individual cells are roughly
-20m across — approaching the limit of HRSL precision — so most child counts
-will be small or zero.
+### Four-Character Geohash (~40km)
+
+`9q9p` covers the East Bay. Request [/dgg?geohash=9q9p](/dgg?geohash=9q9p):
+
+```JSON
+{
+    "geohash": "9q9p",
+    "ulx": -122.34375,
+    "uly": 37.96875,
+    "dx": 0.0439453125,
+    "dy": -0.0439453125,
+    "total": 718014.9,
+    "sub-areas": {
+        "9q9p1": {"link": "/dgg?geohash=9q9p1", "count": 70902.1},
+        "9q9p3": {"link": "/dgg?geohash=9q9p3", "count": 95934.0},
+        ...
+    }
+}
+```
+
+Downtown Oakland is in `9q9p1` with 71K people. Getting smaller but still reasonable.
+
+### Five-Character Geohash (~5km)
+
+`9q9p1` covers central Oakland and the waterfront. Request [/dgg?geohash=9q9p1](/dgg?geohash=9q9p1):
+
+```JSON
+{
+    "geohash": "9q9p1",
+    "ulx": -122.2998046875,
+    "uly": 37.8369140625,
+    "dx": 0.010986328125,
+    "dy": -0.0054931640625,
+    "total": 71918.8,
+    "sub-areas": {
+        "9q9p1d": {"link": "/dgg?geohash=9q9p1d", "count": 2936.7},
+        ...
+    }
+}
+```
+
+The sub-area containing 14th & Broadway is `9q9p1d` with 2,937 people — now you're down to
+a neighbourhood. The cells here are about 1km across.
+
+### Six-Character Geohash (~1km)
+
+`9q9p1d` covers Downtown Oakland around 14th Street. Request [/dgg?geohash=9q9p1d](/dgg?geohash=9q9p1d):
+
+```JSON
+{
+    "geohash": "9q9p1d",
+    "ulx": -122.27783203125,
+    "uly": 37.8094482421875,
+    "dx": 0.001373291015625,
+    "dy": -0.001373291015625,
+    "total": 2936.7,
+    "sub-areas": {
+        "9q9p1dh": {"link": "/dgg?geohash=9q9p1dh", "count": 6.2},
+        ...
+    }
+}
+```
+
+The cell for 14th & Broadway is `9q9p1dh` with just 6 people. Each cell is now about 150m
+across and we're at the limit of HRSL precision. You stop here.
