@@ -156,5 +156,5 @@ smoke_test_dgg() {
     echo
 }
 
-smoke_test_dd "C++" "${function_cpp_custom_domain}"
+smoke_test_dd "C++" "https://${cloudfront_domain}"
 smoke_test_dgg "Python" "${function_url%/}"
