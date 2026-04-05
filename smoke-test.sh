@@ -8,13 +8,13 @@ function_url=$(aws cloudformation describe-stacks \
     --query "Stacks[0].Outputs[?OutputKey=='FunctionUrl'].OutputValue" \
     --output text)
 
-cloudfront_domain=$(aws cloudformation describe-stacks \
+function_cpp_url=$(aws cloudformation describe-stacks \
     --stack-name "${app_stack_name}" \
-    --query "Stacks[0].Outputs[?OutputKey=='CppCloudFrontDomain'].OutputValue" \
+    --query "Stacks[0].Outputs[?OutputKey=='FunctionCppUrl'].OutputValue" \
     --output text)
 
 echo "Function URL (Python): ${function_url}"
-echo "CloudFront domain (C++): ${cloudfront_domain}"
+echo "Function URL (C++):    ${function_cpp_url}"
 
 # Usage: check_dd_json <url> <expected_rows> <expected_cols> <expected_total> <tolerance>
 check_dd_json() {
@@ -98,6 +98,6 @@ smoke_test_dgg() {
     echo 'OK'
 }
 
-smoke_test_dd "C++" "https://${cloudfront_domain}"
-smoke_test_dgg "C++" "https://${cloudfront_domain}"
+smoke_test_dd "C++" "${function_cpp_url%/}"
+smoke_test_dgg "C++" "${function_cpp_url%/}"
 smoke_test_dgg "Python" "${function_url%/}"
