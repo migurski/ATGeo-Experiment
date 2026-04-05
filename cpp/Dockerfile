@@ -107,5 +107,10 @@ RUN mkdir /build/app-build \
 RUN mv /build/app-build/bootstrap.zip /lambda-cpp.zip
 
 # Final stage — export only the zip
-FROM scratch
+FROM scratch AS zip
 COPY --from=builder /lambda-cpp.zip /lambda-cpp.zip
+
+# CLI stage — builder image with binary on PATH for local use
+FROM builder AS cli
+COPY --from=builder /build/app-build/bootstrap /usr/local/bin/atgeo
+ENTRYPOINT ["/usr/local/bin/atgeo"]

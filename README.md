@@ -223,10 +223,27 @@ across and we're at the limit of HRSL precision. You stop here.
 
 ## Local CLI
 
-`lambda.py` can be run directly against a local directory of GeoTIFFs using
-`--lonlat` or `--geohash`:
+Both implementations support a CLI mode against a local GeoTIFF directory.
+
+**Python:**
 
 ```bash
 GEOTIFF_DIR=geotiffs python lambda.py --lonlat -122.3 37.8
 GEOTIFF_DIR=geotiffs python lambda.py --geohash 9q9p1d
+```
+
+**C++ (via Docker):**
+
+```bash
+bash cpp/build.sh   # builds atgeo-cpp-cli image
+
+docker run --rm \
+  -v "$(pwd)/geotiffs:/geotiffs:ro" \
+  -e GEOTIFF_DIR=/geotiffs \
+  atgeo-cpp-cli --lonlat -122.3 37.8
+
+docker run --rm \
+  -v "$(pwd)/geotiffs:/geotiffs:ro" \
+  -e GEOTIFF_DIR=/geotiffs \
+  atgeo-cpp-cli --geohash 9q9p1d
 ```

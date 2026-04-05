@@ -98,11 +98,9 @@ smoke_test_dgg() {
     echo 'OK'
 }
 
-smoke_test_local_dd() {
-    local venv="$1"
-
-    echo "--- local 1 digit (expect 10x10, total~164311) ---"
-    GEOTIFF_DIR=geotiffs "${venv}/python" lambda.py --lonlat -122.3 37.8 \
+smoke_test_local() {
+    echo "--- local Python 1 digit (expect 10x10, total~164311) ---"
+    GEOTIFF_DIR=geotiffs python lambda.py --lonlat -122.3 37.8 \
         | jq --argjson exp_rows 10 --argjson exp_cols 10 \
              --argjson exp_total 164311 --argjson tol 1000 '
         "\(.ulx) \(.uly) \(.dx) \(.dy) \(.data | length) x \(.data[0] | length) total: \(.total)",
@@ -111,8 +109,32 @@ smoke_test_local_dd() {
         if (.total - $exp_total | fabs) > $tol then error("expected total ~\($exp_total), got \(.total)") else "OK" end
         '
 
-    echo "--- local /dgg 6-char geohash (expect 32 sub-areas, total~2936.7) ---"
-    GEOTIFF_DIR=geotiffs "${venv}/python" lambda.py --geohash 9q9p1d \
+    echo "--- local Python /dgg 6-char geohash (expect 32 sub-areas, total~2936.7) ---"
+    GEOTIFF_DIR=geotiffs python lambda.py --geohash 9q9p1d \
+        | jq --argjson exp_total 2936.7 --argjson tol 100 '
+        "\(.geohash) total: \(.total) sub-areas: \(.["sub-areas"] | length)",
+        if (.["sub-areas"] | length) != 32 then error("expected 32 sub-areas, got \(.["sub-areas"] | length)") else empty end,
+        if (.total - $exp_total | fabs) > $tol then error("expected total ~\($exp_total), got \(.total)") else "OK" end
+        '
+
+    echo "--- local C++ 1 digit (expect 10x10, total~164311) ---"
+    docker run --rm \
+        -v "$(pwd)/geotiffs:/geotiffs:ro" \
+        -e GEOTIFF_DIR=/geotiffs \
+        atgeo-cpp-cli --lonlat -122.3 37.8 \
+        | jq --argjson exp_rows 10 --argjson exp_cols 10 \
+             --argjson exp_total 164311 --argjson tol 1000 '
+        "\(.ulx) \(.uly) \(.dx) \(.dy) \(.data | length) x \(.data[0] | length) total: \(.total)",
+        if (.data | length) != $exp_rows then error("expected \($exp_rows) rows, got \(.data | length)") else empty end,
+        if (.data[0] | length) != $exp_cols then error("expected \($exp_cols) cols, got \(.data[0] | length)") else empty end,
+        if (.total - $exp_total | fabs) > $tol then error("expected total ~\($exp_total), got \(.total)") else "OK" end
+        '
+
+    echo "--- local C++ /dgg 6-char geohash (expect 32 sub-areas, total~2936.7) ---"
+    docker run --rm \
+        -v "$(pwd)/geotiffs:/geotiffs:ro" \
+        -e GEOTIFF_DIR=/geotiffs \
+        atgeo-cpp-cli --geohash 9q9p1d \
         | jq --argjson exp_total 2936.7 --argjson tol 100 '
         "\(.geohash) total: \(.total) sub-areas: \(.["sub-areas"] | length)",
         if (.["sub-areas"] | length) != 32 then error("expected 32 sub-areas, got \(.["sub-areas"] | length)") else empty end,
@@ -120,7 +142,7 @@ smoke_test_local_dd() {
         '
 }
 
-smoke_test_local_dd ".venv/bin"
+smoke_test_local
 smoke_test_dd "C++" "${function_cpp_url%/}"
 smoke_test_dgg "C++" "${function_cpp_url%/}"
 smoke_test_dgg "Python" "${function_url%/}"

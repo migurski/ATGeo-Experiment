@@ -89,19 +89,24 @@ docker rm ${CONTAINER_ID}
 
 ## Local testing
 
-Use the Lambda RIE bundled in the base image:
+`build.sh` produces both the Lambda zip and the `atgeo-cpp-cli` Docker image:
 
 ```bash
-bash cpp/build.sh   # produces lambda-cpp.zip
-docker run --rm -p 9000:8080 \
-  -e DATA_BUCKET_NAME=atgeo-experiment-data-us-east-1-XXXX \
-  -e AWS_DEFAULT_REGION=us-east-1 \
-  -e AWS_ACCESS_KEY_ID=... \
-  -e AWS_SECRET_ACCESS_KEY=... \
-  public.ecr.aws/lambda/provided:al2023 bootstrap
-# In another terminal:
-curl -XPOST http://localhost:9000/2015-03-31/functions/function/invocations \
-  -d '{"queryStringParameters":{"lon":"-122","lat":"38"}}'
+bash cpp/build.sh
+```
+
+Run the CLI directly against a local GeoTIFF directory:
+
+```bash
+docker run --rm \
+  -v "$(pwd)/geotiffs:/geotiffs:ro" \
+  -e GEOTIFF_DIR=/geotiffs \
+  atgeo-cpp-cli --lonlat -122.3 37.8
+
+docker run --rm \
+  -v "$(pwd)/geotiffs:/geotiffs:ro" \
+  -e GEOTIFF_DIR=/geotiffs \
+  atgeo-cpp-cli --geohash 9q9p1d
 ```
 
 ## CloudFormation + deploy.sh integration

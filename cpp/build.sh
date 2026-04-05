@@ -3,6 +3,7 @@
 cd "$(dirname "$0")"
 
 docker build --platform linux/arm64 --target builder -t atgeo-cpp-builder .
+docker build --platform linux/arm64 --target cli -t atgeo-cpp-cli .
 
 CONTAINER_ID=$(docker create atgeo-cpp-builder sh)
 docker cp "${CONTAINER_ID}:/lambda-cpp.zip" ../lambda-cpp.zip

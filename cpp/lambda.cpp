@@ -160,6 +160,99 @@ static int decimal_precision(const std::string& s) {
     return static_cast<int>(s.size() - dot - 1);
 }
 
+static std::string dd_body(const std::string& lon_str, const std::string& lat_str,
+                            const std::string& geotiff_dir) {
+    int prec_lon = decimal_precision(lon_str);
+    int prec_lat = decimal_precision(lat_str);
+    int precision = prec_lon < prec_lat ? prec_lon : prec_lat;
+
+    if (precision >= 4) return "";
+
+    double lon = std::stod(lon_str);
+    double lat = std::stod(lat_str);
+
+    std::string tif;
+    double step, half;
+    if (precision == 0) {
+        tif = "degree-1digit.tif"; step = 0.1;   half = 0.5;
+    } else if (precision == 1) {
+        tif = "degree-2digit.tif"; step = 0.01;  half = 0.05;
+    } else if (precision == 2) {
+        tif = "degree-3digit.tif"; step = 0.001; half = 0.005;
+    } else {
+        tif = "degree-3digit.tif"; step = 0.001; half = 0.0005;
+    }
+
+    double factor = std::pow(10.0, precision);
+    double lon_c = std::round(lon * factor) / factor;
+    double lat_c = std::round(lat * factor) / factor;
+    double xmin = lon_c - half;
+    double xmax = lon_c + half;
+    double ymin = lat_c - half;
+    double ymax = lat_c + half;
+
+    std::string path = geotiff_dir + "/" + tif;
+    GDALDataset* ds = static_cast<GDALDataset*>(GDALOpen(path.c_str(), GA_ReadOnly));
+    if (!ds) return "";
+
+    double gt[6];
+    ds->GetGeoTransform(gt);
+
+    int xoff  = static_cast<int>(std::round((xmin - gt[0]) / gt[1]));
+    int yoff  = static_cast<int>(std::round((ymax - gt[3]) / gt[5]));
+    int xsize = static_cast<int>(std::round((xmax - xmin) / gt[1]));
+    int ysize = static_cast<int>(std::round((ymin - ymax) / gt[5]));
+
+    std::vector<float> buf(xsize * ysize);
+    CPLErr err = ds->GetRasterBand(1)->RasterIO(
+        GF_Read, xoff, yoff, xsize, ysize,
+        buf.data(), xsize, ysize, GDT_Float32, 0, 0);
+    GDALClose(ds);
+
+    if (err != CE_None) return "";
+
+    double total = 0.0;
+    for (float v : buf) {
+        if (!std::isnan(v)) total += v;
+    }
+    total = std::round(total * 10.0) / 10.0;
+
+    int out_prec = precision + 1;
+    auto fmt_coord = [](double v, int p) -> std::string {
+        double f = std::pow(10.0, p);
+        double rounded = std::round(v * f) / f;
+        char buf[32];
+        std::snprintf(buf, sizeof(buf), "%.*f", p, rounded);
+        return buf;
+    };
+
+    std::ostringstream body;
+    body << "{";
+    body << "\"ulx\":" << fmt_coord(xmin, out_prec) << ",";
+    body << "\"uly\":" << fmt_coord(ymax, out_prec) << ",";
+    body << "\"dx\":" << step << ",";
+    body << "\"dy\":" << (-step) << ",";
+    body << "\"total\":" << total << ",";
+    body << "\"data\":[";
+    for (int row = 0; row < ysize; ++row) {
+        if (row > 0) body << ",";
+        body << "[";
+        for (int col = 0; col < xsize; ++col) {
+            if (col > 0) body << ",";
+            float v = buf[row * xsize + col];
+            if (std::isnan(v)) {
+                body << "null";
+            } else {
+                double rv = std::round(static_cast<double>(v) * 10.0) / 10.0;
+                body << rv;
+            }
+        }
+        body << "]";
+    }
+    body << "]}";
+    return body.str();
+}
+
 invocation_response handler(invocation_request const& request) {
     try {
         JsonValue event(request.payload);
@@ -168,7 +261,6 @@ invocation_response handler(invocation_request const& request) {
 
         auto view = event.View();
 
-        // Route /dgg requests
         std::string raw_path;
         if (view.KeyExists("rawPath")) raw_path = view.GetString("rawPath").c_str();
         else if (view.KeyExists("path")) raw_path = view.GetString("path").c_str();
@@ -187,7 +279,6 @@ invocation_response handler(invocation_request const& request) {
         }
 
         auto qsp = view.GetObject("queryStringParameters");
-
         std::string lon_str, lat_str;
         if (qsp.IsObject()) {
             if (qsp.KeyExists("lon")) lon_str = qsp.GetString("lon").c_str();
@@ -202,10 +293,7 @@ invocation_response handler(invocation_request const& request) {
             return invocation_response::success(resp.View().WriteCompact(), "application/json");
         }
 
-        int prec_lon = decimal_precision(lon_str);
-        int prec_lat = decimal_precision(lat_str);
-        int precision = prec_lon < prec_lat ? prec_lon : prec_lat;
-
+        int precision = std::min(decimal_precision(lon_str), decimal_precision(lat_str));
         if (precision >= 4) {
             JsonValue resp;
             resp.WithInteger("statusCode", 400);
@@ -214,106 +302,16 @@ invocation_response handler(invocation_request const& request) {
             return invocation_response::success(resp.View().WriteCompact(), "application/json");
         }
 
-        double lon = std::stod(lon_str);
-        double lat = std::stod(lat_str);
-
-        std::string tif;
-        double step, half;
-        if (precision == 0) {
-            tif = "degree-1digit.tif"; step = 0.1;   half = 0.5;
-        } else if (precision == 1) {
-            tif = "degree-2digit.tif"; step = 0.01;  half = 0.05;
-        } else if (precision == 2) {
-            tif = "degree-3digit.tif"; step = 0.001; half = 0.005;
-        } else {
-            tif = "degree-3digit.tif"; step = 0.001; half = 0.0005;
-        }
-
-        // Round coordinate to detected precision, then build extent
-        double factor = std::pow(10.0, precision);
-        double lon_c = std::round(lon * factor) / factor;
-        double lat_c = std::round(lat * factor) / factor;
-        double xmin = lon_c - half;
-        double xmax = lon_c + half;
-        double ymin = lat_c - half;
-        double ymax = lat_c + half;
-
-        std::string path = geotiff_dir + "/" + tif;
-        GDALDataset* ds = static_cast<GDALDataset*>(GDALOpen(path.c_str(), GA_ReadOnly));
-        if (!ds)
-            return invocation_response::failure("GDALOpen failed for " + path, "GDALError");
-
-        double gt[6];
-        ds->GetGeoTransform(gt);
-        // gt: [ulx, dx, 0, uly, 0, dy]  (dy is negative)
-
-        int xoff  = static_cast<int>(std::round((xmin - gt[0]) / gt[1]));
-        int yoff  = static_cast<int>(std::round((ymax - gt[3]) / gt[5]));
-        int xsize = static_cast<int>(std::round((xmax - xmin) / gt[1]));
-        int ysize = static_cast<int>(std::round((ymin - ymax) / gt[5]));
-
-        std::vector<float> buf(xsize * ysize);
-        CPLErr err = ds->GetRasterBand(1)->RasterIO(
-            GF_Read, xoff, yoff, xsize, ysize,
-            buf.data(), xsize, ysize, GDT_Float32, 0, 0);
-        GDALClose(ds);
-
-        if (err != CE_None)
-            return invocation_response::failure("RasterIO failed", "GDALError");
-
-        // Compute total (sum of non-NaN values)
-        double total = 0.0;
-        for (float v : buf) {
-            if (!std::isnan(v)) total += v;
-        }
-        // Round total to 1 decimal place
-        total = std::round(total * 10.0) / 10.0;
-
-        // Build data matrix as JSON array-of-arrays
-        int out_prec = precision + 1;
-        double prec_factor = std::pow(10.0, out_prec);
-
-        // Build body JSON manually for the nested array
-        std::ostringstream body;
-        body << "{";
-        // ulx / uly rounded to out_prec decimal places, written with fixed
-        // precision so default stream sig-figs don't truncate trailing digits
-        auto fmt_coord = [&](double v, int p) -> std::string {
-            double f = std::pow(10.0, p);
-            double rounded = std::round(v * f) / f;
-            char buf[32];
-            std::snprintf(buf, sizeof(buf), "%.*f", p, rounded);
-            return buf;
-        };
-        body << "\"ulx\":" << fmt_coord(xmin, out_prec) << ",";
-        body << "\"uly\":" << fmt_coord(ymax, out_prec) << ",";
-        body << "\"dx\":" << step << ",";
-        body << "\"dy\":" << (-step) << ",";
-        body << "\"total\":" << total << ",";
-        body << "\"data\":[";
-        for (int row = 0; row < ysize; ++row) {
-            if (row > 0) body << ",";
-            body << "[";
-            for (int col = 0; col < xsize; ++col) {
-                if (col > 0) body << ",";
-                float v = buf[row * xsize + col];
-                if (std::isnan(v)) {
-                    body << "null";
-                } else {
-                    double rv = std::round(static_cast<double>(v) * 10.0) / 10.0;
-                    body << rv;
-                }
-            }
-            body << "]";
-        }
-        body << "]}";
+        std::string body = dd_body(lon_str, lat_str, geotiff_dir);
+        if (body.empty())
+            return invocation_response::failure("dd_body failed", "GDALError");
 
         JsonValue lambda_resp;
         lambda_resp.WithInteger("statusCode", 200);
         JsonValue headers;
         headers.WithString("Content-Type", "application/json");
         lambda_resp.WithObject("headers", headers);
-        lambda_resp.WithString("body", body.str() + "\n");
+        lambda_resp.WithString("body", body + "\n");
 
         return invocation_response::success(
             lambda_resp.View().WriteCompact(), "application/json");
@@ -323,8 +321,46 @@ invocation_response handler(invocation_request const& request) {
     }
 }
 
-int main() {
+int main(int argc, char* argv[]) {
     GDALAllRegister();
+
+    // CLI mode: --lonlat <lon> <lat>  or  --geohash <gh>
+    if (argc > 1) {
+        const char* geotiff_dir_env = std::getenv("GEOTIFF_DIR");
+        if (!geotiff_dir_env) {
+            std::fprintf(stderr, "GEOTIFF_DIR not set\n");
+            return 1;
+        }
+        std::string geotiff_dir(geotiff_dir_env);
+
+        std::string mode(argv[1]);
+        if (mode == "--lonlat" && argc == 4) {
+            std::string body = dd_body(argv[2], argv[3], geotiff_dir);
+            if (body.empty()) {
+                std::fprintf(stderr, "dd_body failed\n");
+                return 1;
+            }
+            std::printf("%s\n", body.c_str());
+        } else if (mode == "--geohash" && argc == 3) {
+            // Reuse dgg_handler via a fake invocation_response — extract body directly
+            Aws::SDKOptions options;
+            Aws::InitAPI(options);
+            auto resp = dgg_handler(argv[2], geotiff_dir);
+            Aws::ShutdownAPI(options);
+            if (!resp.is_success()) {
+                std::fprintf(stderr, "dgg_handler failed: %s\n", resp.get_payload().c_str());
+                return 1;
+            }
+            // resp payload is the Lambda JSON envelope; extract body field
+            JsonValue envelope(resp.get_payload());
+            std::string body = envelope.View().GetString("body").c_str();
+            std::printf("%s", body.c_str());
+        } else {
+            std::fprintf(stderr, "Usage: %s --lonlat <lon> <lat> | --geohash <geohash>\n", argv[0]);
+            return 1;
+        }
+        return 0;
+    }
 
     Aws::SDKOptions options;
     Aws::InitAPI(options);
