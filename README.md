@@ -89,7 +89,7 @@ Let's use the same location, 14th & Broadway in Downtown Oakland, whose geohash 
 ### One-Character Geohash (~1000km)
 
 `9` covers most of North America west of the Mississippi. Request
-[/dgg?geohash=9](/dgg?geohash=9) to see all 32 two-character children:
+[/dgg?geohash=9](https://atgeo-experiment.teczno.com/dgg?geohash=9) to see all 32 two-character children:
 
 ```JSON
 {
@@ -113,7 +113,7 @@ a comfortably large anonymity set. It's safe to look deeper.
 
 ### Two-Character Geohash (~300km)
 
-`9q` covers California and Nevada. Request [/dgg?geohash=9q](/dgg?geohash=9q):
+`9q` covers California and Nevada. Request [/dgg?geohash=9q](https://atgeo-experiment.teczno.com/dgg?geohash=9q):
 
 ```JSON
 {
@@ -135,7 +135,7 @@ The Bay Area falls in `9q9` with 5.6 million people. Still a large set. Look dee
 
 ### Three-Character Geohash (~150km)
 
-`9q9` covers the San Francisco Bay Area. Request [/dgg?geohash=9q9](/dgg?geohash=9q9):
+`9q9` covers the San Francisco Bay Area. Request [/dgg?geohash=9q9](https://atgeo-experiment.teczno.com/dgg?geohash=9q9):
 
 ```JSON
 {
@@ -157,7 +157,7 @@ Oakland is in `9q9p` with 718K people. Still comfortable. Keep going.
 
 ### Four-Character Geohash (~40km)
 
-`9q9p` covers the East Bay. Request [/dgg?geohash=9q9p](/dgg?geohash=9q9p):
+`9q9p` covers the East Bay. Request [/dgg?geohash=9q9p](https://atgeo-experiment.teczno.com/dgg?geohash=9q9p):
 
 ```JSON
 {
@@ -179,7 +179,7 @@ Downtown Oakland is in `9q9p1` with 71K people. Getting smaller but still reason
 
 ### Five-Character Geohash (~5km)
 
-`9q9p1` covers central Oakland and the waterfront. Request [/dgg?geohash=9q9p1](/dgg?geohash=9q9p1):
+`9q9p1` covers central Oakland and the waterfront. Request [/dgg?geohash=9q9p1](https://atgeo-experiment.teczno.com/dgg?geohash=9q9p1):
 
 ```JSON
 {
@@ -201,7 +201,7 @@ a neighbourhood. The cells here are about 1km across.
 
 ### Six-Character Geohash (~1km)
 
-`9q9p1d` covers Downtown Oakland around 14th Street. Request [/dgg?geohash=9q9p1d](/dgg?geohash=9q9p1d):
+`9q9p1d` covers Downtown Oakland around 14th Street. Request [/dgg?geohash=9q9p1d](https://atgeo-experiment.teczno.com/dgg?geohash=9q9p1d):
 
 ```JSON
 {
