@@ -41,10 +41,12 @@ Port of Python `dgg_handler` and `geohash.geohash2lonlats()`:
 1. `geohash2lonlats(gh)` — decode each char to 5 bits via `GEOHASH_ALPHABET.find()`, split
    interleaved bits into xbin/ybin, parse as binary fractions, scale to lon/lat
 2. Validate `geohash` param: present, 1–7 chars, all in `GEOHASH_ALPHABET`
-3. For 1–6 chars: open `geohash-(N+1)char.tif`, loop all 32 `GEOHASH_ALPHABET` children,
+3. Compute parent bbox via `geohash2lonlats(gh)` and child cell dimensions from first child
+   (or same cell at max depth) — used for `ulx`, `uly`, `dx`, `dy` in response
+4. For 1–6 chars: open `geohash-(N+1)char.tif`, loop all 32 `GEOHASH_ALPHABET` children,
    call `geohash2lonlats(child)`, compute center pixel offset, `RasterIO` 1×1 each
-4. For 7 chars: open `geohash-7char.tif`, read single pixel for the cell itself
-5. Build JSON: `{"geohash":…,"total":…,"sub-areas":{…}}` via `ostringstream`
+5. For 7 chars: open `geohash-7char.tif`, read single pixel for the cell itself
+6. Build JSON: `{"geohash":…,"ulx":…,"uly":…,"dx":…,"dy":…,"total":…,"sub-areas":{…}}` via `ostringstream`
 
 ## GDAL build flags (minimal)
 
@@ -102,16 +104,15 @@ curl -XPOST http://localhost:9000/2015-03-31/functions/function/invocations \
   -d '{"queryStringParameters":{"lon":"-122","lat":"38"}}'
 ```
 
-## CloudFormation + deploy.sh integration (after local verification)
+## CloudFormation + deploy.sh integration
 
-Add `LambdaFunctionCpp` resource to `application-template.yaml` (same role, same data bucket env var,
-`Runtime: provided.al2023`, `PackageType: Zip`, `S3Key: lambda-cpp.zip`).
+All of this is already in place. Notes:
 
-Add phases to `deploy.sh`:
-- Build `lambda-cpp.zip` via `cpp/build.sh`
-- Upload zip to bootstrap bucket
-- Pass `LambdaCppPackageKey` parameter to application stack
-- Smoke test the C++ function URL with the same 5 cases
+- `LambdaFunctionCpp` in `application-template.yaml` uses `provided.al2023`, `PackageType: Zip`
+- The `CppCachePolicy` query string whitelist includes `lon`, `lat`, and `geohash` — all three
+  must be listed or CloudFront strips them before forwarding to the Lambda
+- `deploy.sh` smoke tests hit the raw CloudFront domain (`CppCloudFrontDomain` output) rather
+  than the custom domain alias, which had unreliable DNS resolution
 
 ## Verification
 
