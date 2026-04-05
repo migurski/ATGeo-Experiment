@@ -32,13 +32,13 @@ def handler(event, context):
     bucket = os.environ['DATA_BUCKET_NAME']
 
     if precision == 0:
-        tif, step, half = 'hrsl-1.tif', 0.1, 0.5
+        tif, step, half = 'degree-1digit.tif', 0.1, 0.5
     elif precision == 1:
-        tif, step, half = 'hrsl-2.tif', 0.01, 0.05
+        tif, step, half = 'degree-2digit.tif', 0.01, 0.05
     elif precision == 2:
-        tif, step, half = 'hrsl-3.tif', 0.001, 0.005
+        tif, step, half = 'degree-3digit.tif', 0.001, 0.005
     else:  # precision == 3
-        tif, step, half = 'hrsl-3.tif', 0.001, 0.0005
+        tif, step, half = 'degree-3digit.tif', 0.001, 0.0005
 
     # Round coordinate to detected precision, then build extent
     factor = 10 ** precision
@@ -94,9 +94,9 @@ def _make_mock_ds(gt):
 
 # GeoTransforms matching each HRSL file's pixel size
 _GT = {
-    'hrsl-1.tif': (-180.0, 0.1,   0, 90.0, 0, -0.1),
-    'hrsl-2.tif': (-180.0, 0.01,  0, 90.0, 0, -0.01),
-    'hrsl-3.tif': (-180.0, 0.001, 0, 90.0, 0, -0.001),
+    'degree-1digit.tif': (-180.0, 0.1,   0, 90.0, 0, -0.1),
+    'degree-2digit.tif': (-180.0, 0.01,  0, 90.0, 0, -0.01),
+    'degree-3digit.tif': (-180.0, 0.001, 0, 90.0, 0, -0.001),
 }
 
 

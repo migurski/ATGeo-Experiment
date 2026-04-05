@@ -1,5 +1,5 @@
 all: \
-	geotiffs/hrsl-3.tif geotiffs/hrsl-2.tif geotiffs/hrsl-1.tif \
+	geotiffs/degree-3digit.tif geotiffs/degree-2digit.tif geotiffs/degree-1digit.tif \
 	geotiffs/geohash-7char.tif geotiffs/geohash-6char.tif geotiffs/geohash-5char.tif \
 	geotiffs/geohash-4char.tif geotiffs/geohash-3char.tif geotiffs/geohash-2char.tif \
 	geotiffs/geohash-1char.tif \
@@ -16,17 +16,17 @@ geotiffs:
 
 # Original data: https://registry.opendata.aws/dataforgood-fb-hrsl/
 
-geotiffs/hrsl-3.tif: geotiffs
+geotiffs/degree-3digit.tif: geotiffs
 	gdalwarp -of GTIFF -co COMPRESS=LZW -co TILED=YES -ot Float32 \
 		-tr 0.001 -0.001 -r sum -te -180 -90 180 90 \
 		/vsis3/dataforgood-fb-data/hrsl-cogs/hrsl_general/hrsl_general-latest.vrt $@
 
-geotiffs/hrsl-2.tif: geotiffs/hrsl-3.tif geotiffs
+geotiffs/degree-2digit.tif: geotiffs/degree-3digit.tif geotiffs
 	gdalwarp -of GTIFF -co COMPRESS=LZW -co TILED=YES -ot Float32 \
 	    -tr 0.01 -0.01 -r sum \
 	    $< $@
 
-geotiffs/hrsl-1.tif: geotiffs/hrsl-2.tif geotiffs
+geotiffs/degree-1digit.tif: geotiffs/degree-2digit.tif geotiffs
 	gdalwarp -of GTIFF -co COMPRESS=LZW -co TILED=YES -ot Float32 \
 	    -tr 0.1 -0.1 -r sum \
 	    $< $@

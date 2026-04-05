@@ -19,10 +19,10 @@ paths:
         Accepts a longitude and latitude as query parameters. The number of
         decimal digits supplied (minimum of lon and lat) determines which
         GeoTIFF is read and what window size is returned:
-        0 digits reads hrsl-1.tif with a 1°×1° window returning 10×10 values;
-        1 digit reads hrsl-2.tif with a 0.1°×0.1° window returning 10×10 values;
-        2 digits reads hrsl-3.tif with a 0.01°×0.01° window returning 10×10 values;
-        3 digits reads hrsl-3.tif with a 0.001°×0.001° window returning 1×1 value;
+        0 digits reads degree-1digit.tif with a 1°×1° window returning 10×10 values;
+        1 digit reads degree-2digit.tif with a 0.1°×0.1° window returning 10×10 values;
+        2 digits reads degree-3digit.tif with a 0.01°×0.01° window returning 10×10 values;
+        3 digits reads degree-3digit.tif with a 0.001°×0.001° window returning 1×1 value;
         4 or more digits returns HTTP 400.
         Coordinates are rounded to the detected precision and the window is
         centred on that rounded value. Pixels are read directly from S3 via
