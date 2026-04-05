@@ -159,12 +159,28 @@ components:
   schemas:
     GeohashResponse:
       type: object
-      required: [geohash, total, sub-areas]
+      required: [geohash, ulx, uly, dx, dy, total, sub-areas]
       properties:
         geohash:
           type: string
           description: The input geohash string.
           example: 'u4p'
+        ulx:
+          type: number
+          description: Longitude of the upper-left corner of the queried cell.
+          example: -180.0
+        uly:
+          type: number
+          description: Latitude of the upper-left corner of the queried cell.
+          example: 90.0
+        dx:
+          type: number
+          description: Child cell width in degrees (positive, west→east).
+          example: 45.0
+        dy:
+          type: number
+          description: Child cell height in degrees (negative, north→south).
+          example: -45.0
         total:
           type: number
           description: Sum of all child population counts, rounded to 1 decimal place.

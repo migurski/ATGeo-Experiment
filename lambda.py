@@ -98,15 +98,15 @@ def dgg_handler(event, context):
         return {'statusCode': 400, 'body': 'ValueError: invalid geohash character\n'}
 
     bucket = os.environ['DATA_BUCKET_NAME']
+    plon1, plat1, plon2, plat2 = geohash.geohash2lonlats(gh)
 
     if len(gh) == 7:
         # At max depth, read a single pixel from the same-level TIFF
         tif = f'geohash-{len(gh)}char.tif'
         ds = gdal.Open(f'/vsis3/{bucket}/{tif}')
         gt = ds.GetGeoTransform()
-        lon1, lat1, lon2, lat2 = geohash.geohash2lonlats(gh)
-        lon_c = (lon1 + lon2) / 2
-        lat_c = (lat1 + lat2) / 2
+        lon_c = (plon1 + plon2) / 2
+        lat_c = (plat1 + plat2) / 2
         xoff = int((lon_c - gt[0]) / gt[1])
         yoff = int((lat_c - gt[3]) / gt[5])
         raw = ds.GetRasterBand(1).ReadRaster(xoff, yoff, 1, 1)
@@ -115,6 +115,8 @@ def dgg_handler(event, context):
         count = 0.0 if math.isnan(val) else round(float(val), 1)
         sub_areas = {gh: {'link': f'/dgg?geohash={gh}', 'count': count}}
         total = count
+        dx = plon2 - plon1
+        dy = plat1 - plat2  # negative
     else:
         tif = f'geohash-{len(gh) + 1}char.tif'
         ds = gdal.Open(f'/vsis3/{bucket}/{tif}')
@@ -137,12 +139,20 @@ def dgg_handler(event, context):
             sub_areas[child] = {'link': f'/dgg?geohash={child}', 'count': count}
 
         ds = None
+        # child cell dimensions from first child's bbox
+        clon1, clat1, clon2, clat2 = geohash.geohash2lonlats(gh + geohash.ALPHABET[0])
+        dx = clon2 - clon1
+        dy = clat1 - clat2  # negative
 
     return {
         'statusCode': 200,
         'headers': {'Content-Type': 'application/json'},
         'body': json.dumps({
             'geohash': gh,
+            'ulx': plon1,
+            'uly': plat2,
+            'dx': dx,
+            'dy': dy,
             'total': round(total, 1),
             'sub-areas': sub_areas,
         }) + '\n',
@@ -300,8 +310,17 @@ class DggHandlerTests(unittest.TestCase):
     def test_response_keys(self):
         resp = self._call('u')
         body = json.loads(resp['body'])
-        for key in ('geohash', 'total', 'sub-areas'):
+        for key in ('geohash', 'ulx', 'uly', 'dx', 'dy', 'total', 'sub-areas'):
             self.assertIn(key, body)
+
+    def test_bbox_values(self):
+        resp = self._call('u')
+        body = json.loads(resp['body'])
+        # 'u' covers lon 0..45, lat 45..90
+        self.assertAlmostEqual(body['ulx'], 0.0, places=6)
+        self.assertAlmostEqual(body['uly'], 90.0, places=6)
+        self.assertGreater(body['dx'], 0)
+        self.assertLess(body['dy'], 0)
 
     def test_sub_area_entry_shape(self):
         resp = self._call('u')
