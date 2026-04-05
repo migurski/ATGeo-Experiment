@@ -110,7 +110,7 @@ RUN mv /build/app-build/bootstrap.zip /lambda-cpp.zip
 FROM scratch AS zip
 COPY --from=builder /lambda-cpp.zip /lambda-cpp.zip
 
-# CLI stage — builder image with binary on PATH for local use
-FROM builder AS cli
+# CLI stage — minimal image with just the binary
+FROM public.ecr.aws/lambda/provided:al2023 AS cli
 COPY --from=builder /build/app-build/bootstrap /usr/local/bin/atgeo
 ENTRYPOINT ["/usr/local/bin/atgeo"]
