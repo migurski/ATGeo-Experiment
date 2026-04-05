@@ -36,7 +36,7 @@ geotiffs/degree-1digit.tif: geotiffs/degree-2digit.tif geotiffs
 geotiffs/geohash-7char.tif: geotiffs
 	gdalwarp -of GTIFF -co COMPRESS=LZW -co TILED=YES -ot Float32 \
 	    -ts 262144 131072 -r sum -te -180 -90 180 90 \
-	    /tmp/hrsl/hrsl_general-latest.vrt $@
+	    /vsis3/dataforgood-fb-data/hrsl-cogs/hrsl_general/hrsl_general-latest.vrt $@
 
 geotiffs/geohash-6char.tif: geotiffs/geohash-7char.tif geotiffs
 	gdalwarp -of GTIFF -co COMPRESS=LZW -co TILED=YES -ot Float32 \
@@ -73,7 +73,7 @@ geotiffs/geohash-1char.tif: geotiffs/geohash-2char.tif geotiffs
 geotiffs/quadkey-18char.tif: geotiffs
 	gdalwarp -of GTIFF -co COMPRESS=LZW -co TILED=YES -ot Float32 \
 	    -ts 262144 262144 -r sum -te -20037508.34 -20037508.34 20037508.34 20037508.34 -t_srs EPSG:3857 \
-	    /tmp/hrsl/hrsl_general-latest.vrt $@
+	    /vsis3/dataforgood-fb-data/hrsl-cogs/hrsl_general/hrsl_general-latest.vrt $@
 
 geotiffs/quadkey-17char.tif: geotiffs/quadkey-18char.tif geotiffs
 	gdalwarp -of GTIFF -co COMPRESS=LZW -co TILED=YES -ot Float32 \

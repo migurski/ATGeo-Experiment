@@ -225,7 +225,15 @@ across and we're at the limit of HRSL precision. You stop here.
 
 Both implementations support a CLI mode against a local GeoTIFF directory.
 
+Start by building `geotiffs` (slow!):
+
+```bash
+make
+```
+
 **Python:**
+
+Set up the `GDAL` package in a local environment, then:
 
 ```bash
 GEOTIFF_DIR=geotiffs python lambda.py --lonlat -122.3 37.8
