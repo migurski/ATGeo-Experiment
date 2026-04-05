@@ -325,7 +325,7 @@ int main(int argc, char* argv[]) {
     GDALAllRegister();
 
     // CLI mode: --lonlat <lon> <lat>  or  --geohash <gh>
-    if (argc > 1) {
+    if (argc > 1 && (std::string(argv[1]) == "--lonlat" || std::string(argv[1]) == "--geohash")) {
         const char* geotiff_dir_env = std::getenv("GEOTIFF_DIR");
         if (!geotiff_dir_env) {
             std::fprintf(stderr, "GEOTIFF_DIR not set\n");
