@@ -111,6 +111,6 @@ FROM scratch AS zip
 COPY --from=builder /lambda-cpp.zip /lambda-cpp.zip
 
 # CLI stage — minimal image with just the binary
-FROM public.ecr.aws/lambda/provided:al2023 AS cli
+FROM public.ecr.aws/amazonlinux/amazonlinux:2023-minimal AS cli
 COPY --from=builder /build/app-build/bootstrap /usr/local/bin/atgeo
 ENTRYPOINT ["/usr/local/bin/atgeo"]
