@@ -220,3 +220,13 @@ a neighbourhood. The cells here are about 1km across.
 
 The cell for 14th & Broadway is `9q9p1dh` with just 6 people. Each cell is now about 150m
 across and we're at the limit of HRSL precision. You stop here.
+
+## Local CLI
+
+`lambda.py` can be run directly against a local directory of GeoTIFFs using
+`--lonlat` or `--geohash`:
+
+```bash
+GEOTIFF_DIR=geotiffs python lambda.py --lonlat -122.3 37.8
+GEOTIFF_DIR=geotiffs python lambda.py --geohash 9q9p1d
+```

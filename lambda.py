@@ -1,3 +1,4 @@
+import argparse
 import json
 import math
 import os
@@ -349,4 +350,17 @@ class DggHandlerTests(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    unittest.main()
+    parser = argparse.ArgumentParser()
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument('--lonlat', nargs=2, type=float, metavar=('LON', 'LAT'))
+    group.add_argument('--geohash', type=str)
+    args = parser.parse_args()
+
+    if args.lonlat:
+        lon, lat = args.lonlat
+        event = {'queryStringParameters': {'lon': str(lon), 'lat': str(lat)}}
+    else:
+        event = {'rawPath': '/dgg', 'queryStringParameters': {'geohash': args.geohash}}
+
+    resp = handler(event, None)
+    print(resp['body'], end='')
