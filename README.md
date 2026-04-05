@@ -62,7 +62,7 @@ with this response:
 ```JSON
 {
     "ulx": -122.275,
-    "uly": 38.805,
+    "uly": 37.805,
     "dx": 0.001,
     "dy": -0.001,
     "total": 7198.8,
@@ -70,7 +70,7 @@ with this response:
 }
 ```
 
-The total here is 7.2K for an area between (-122.275, 38.795) and (-122.285, 38.805).
+The total here is 7.2K for an area between (-122.275, 37.795) and (-122.265, 37.805).
 Your real downtown location now has just 5 people in it, and the densest areas here have
 just a few hundred. Each sub-area is just 100m long from North to South and we’re
 reaching the limits of HRSL precision. You’re not comfortable geolocating yourself any

@@ -53,12 +53,14 @@ static invocation_response dgg_handler(
     if (gh.empty()) {
         JsonValue resp;
         resp.WithInteger("statusCode", 400);
+        resp.WithObject("headers", JsonValue().WithString("Content-Type", "text/plain"));
         resp.WithString("body", "Missing geohash\n");
         return invocation_response::success(resp.View().WriteCompact(), "application/json");
     }
     if (gh.size() > 7) {
         JsonValue resp;
         resp.WithInteger("statusCode", 400);
+        resp.WithObject("headers", JsonValue().WithString("Content-Type", "text/plain"));
         resp.WithString("body", "ValueError: geohash too long (max 7 characters)\n");
         return invocation_response::success(resp.View().WriteCompact(), "application/json");
     }
@@ -66,6 +68,7 @@ static invocation_response dgg_handler(
         if (GEOHASH_ALPHABET.find(c) == std::string::npos) {
             JsonValue resp;
             resp.WithInteger("statusCode", 400);
+            resp.WithObject("headers", JsonValue().WithString("Content-Type", "text/plain"));
             resp.WithString("body", "ValueError: invalid geohash character\n");
             return invocation_response::success(resp.View().WriteCompact(), "application/json");
         }
@@ -194,6 +197,7 @@ invocation_response handler(invocation_request const& request) {
         if (lon_str.empty() || lat_str.empty()) {
             JsonValue resp;
             resp.WithInteger("statusCode", 400);
+            resp.WithObject("headers", JsonValue().WithString("Content-Type", "text/plain"));
             resp.WithString("body", "Missing lon or lat\n");
             return invocation_response::success(resp.View().WriteCompact(), "application/json");
         }
@@ -205,6 +209,7 @@ invocation_response handler(invocation_request const& request) {
         if (precision >= 4) {
             JsonValue resp;
             resp.WithInteger("statusCode", 400);
+            resp.WithObject("headers", JsonValue().WithString("Content-Type", "text/plain"));
             resp.WithString("body", "ValueError: precision too high (max 3 digits)\n");
             return invocation_response::success(resp.View().WriteCompact(), "application/json");
         }

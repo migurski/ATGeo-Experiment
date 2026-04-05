@@ -26,12 +26,12 @@ def handler(event, context):
     lat_str = params.get('lat')
 
     if not lon_str or not lat_str:
-        return {'statusCode': 400, 'body': 'Missing lon or lat\n'}
+        return {'statusCode': 400, 'headers': {'Content-Type': 'text/plain'}, 'body':'Missing lon or lat\n'}
 
     precision = min(decimal_precision(lon_str), decimal_precision(lat_str))
 
     if precision >= 4:
-        return {'statusCode': 400, 'body': 'ValueError: precision too high (max 3 digits)\n'}
+        return {'statusCode': 400, 'headers': {'Content-Type': 'text/plain'}, 'body':'ValueError: precision too high (max 3 digits)\n'}
 
     lon = float(lon_str)
     lat = float(lat_str)
@@ -89,13 +89,13 @@ def dgg_handler(event, context):
     gh = params.get('geohash')
 
     if not gh:
-        return {'statusCode': 400, 'body': 'Missing geohash\n'}
+        return {'statusCode': 400, 'headers': {'Content-Type': 'text/plain'}, 'body':'Missing geohash\n'}
 
     if len(gh) > 7:
-        return {'statusCode': 400, 'body': 'ValueError: geohash too long (max 7 characters)\n'}
+        return {'statusCode': 400, 'headers': {'Content-Type': 'text/plain'}, 'body':'ValueError: geohash too long (max 7 characters)\n'}
 
     if any(c not in geohash.ALPHABET for c in gh):
-        return {'statusCode': 400, 'body': 'ValueError: invalid geohash character\n'}
+        return {'statusCode': 400, 'headers': {'Content-Type': 'text/plain'}, 'body':'ValueError: invalid geohash character\n'}
 
     bucket = os.environ['DATA_BUCKET_NAME']
     plon1, plat1, plon2, plat2 = geohash.geohash2lonlats(gh)
