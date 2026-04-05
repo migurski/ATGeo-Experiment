@@ -76,6 +76,12 @@ static invocation_response dgg_handler(
         ? "geohash-7char.tif"
         : "geohash-" + std::to_string(gh.size() + 1) + "char.tif";
 
+    BBox pbb = geohash2lonlats(gh);
+    // dx/dy: child cell dimensions (at max depth, the cell itself)
+    BBox cbb = at_max_depth ? pbb : geohash2lonlats(gh + GEOHASH_ALPHABET[0]);
+    double dx = cbb.lon2 - cbb.lon1;
+    double dy = cbb.lat1 - cbb.lat2;  // negative
+
     std::string path = "/vsis3/" + bucket + "/" + tif;
     GDALDataset* ds = static_cast<GDALDataset*>(GDALOpen(path.c_str(), GA_ReadOnly));
     if (!ds)
@@ -122,6 +128,10 @@ static invocation_response dgg_handler(
     // Build JSON body
     std::ostringstream body;
     body << "{\"geohash\":\"" << gh << "\",";
+    body << "\"ulx\":" << pbb.lon1 << ",";
+    body << "\"uly\":" << pbb.lat2 << ",";
+    body << "\"dx\":" << dx << ",";
+    body << "\"dy\":" << dy << ",";
     body << "\"total\":" << total << ",";
     body << "\"sub-areas\":{";
     for (size_t i = 0; i < results.size(); ++i) {
