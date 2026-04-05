@@ -19,9 +19,9 @@ def decimal_precision(s):
 
 def handler(event, context):
     path = event.get('rawPath') or event.get('path') or '/'
-    if path == '/dgg':
-        return dgg_handler(event, context)
+    return dgg_handler(event, context) if path == '/dgg' else lonlat_handler(event, context)
 
+def lonlat_handler(event, context):
     params = event.get('queryStringParameters') or {}
     lon_str = params.get('lon')
     lat_str = params.get('lat')
@@ -352,13 +352,13 @@ class DggHandlerTests(unittest.TestCase):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument('--lonlat', nargs=2, type=float, metavar=('LON', 'LAT'))
+    group.add_argument('--lonlat', nargs=2, type=str, metavar=('LON', 'LAT'))
     group.add_argument('--geohash', type=str)
     args = parser.parse_args()
 
     if args.lonlat:
         lon, lat = args.lonlat
-        event = {'queryStringParameters': {'lon': str(lon), 'lat': str(lat)}}
+        event = {'queryStringParameters': {'lon': lon, 'lat': lat}}
     else:
         event = {'rawPath': '/dgg', 'queryStringParameters': {'geohash': args.geohash}}
 
