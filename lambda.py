@@ -1,4 +1,5 @@
 import argparse
+import itertools
 import json
 import math
 import os
@@ -9,6 +10,7 @@ from unittest.mock import MagicMock, patch
 from osgeo import gdal
 
 import geohash
+import quadkey
 
 
 def decimal_precision(s):
@@ -19,7 +21,12 @@ def decimal_precision(s):
 
 def handler(event, context):
     path = event.get('rawPath') or event.get('path') or '/'
-    return dgg_handler(event, context) if path == '/dgg' else lonlat_handler(event, context)
+    params = event.get('queryStringParameters') or {}
+    if path == '/dgg':
+        if params.get('quadkey'):
+            return quadkey_handler(event, context)
+        return dgg_handler(event, context)
+    return lonlat_handler(event, context)
 
 def lonlat_handler(event, context):
     params = event.get('queryStringParameters') or {}
@@ -160,6 +167,91 @@ def dgg_handler(event, context):
     }
 
 
+def _quadkey_tile_xy(key):
+    ''' Return (xtile, ytile) pixel offset for a quadkey string.
+
+    Replicates the x/y bit decomposition from quadkey.quadkey2lonlats()
+    without converting to geographic coordinates.
+    '''
+    xychars = [quadkey.binpad(int(c), 2) for c in key]
+    ybin, xbin = [''.join(chars) for chars in zip(*xychars)]
+    return int(xbin, 2), int(ybin, 2)
+
+
+_MERCATOR_HALF = 20037508.34
+
+
+def quadkey_handler(event, context):
+    params = event.get('queryStringParameters') or {}
+    qk = params.get('quadkey')
+
+    if not qk:
+        return {'statusCode': 400, 'headers': {'Content-Type': 'text/plain'}, 'body': 'Missing quadkey\n'}
+
+    if len(qk) > 18:
+        return {'statusCode': 400, 'headers': {'Content-Type': 'text/plain'}, 'body': 'ValueError: quadkey too long (max 18 characters)\n'}
+
+    if any(c not in '0123' for c in qk):
+        return {'statusCode': 400, 'headers': {'Content-Type': 'text/plain'}, 'body': 'ValueError: invalid quadkey character\n'}
+
+    geotiff_dir = os.environ['GEOTIFF_DIR']
+
+    # Parent cell bounds in EPSG:3857
+    pxtile, pytile = _quadkey_tile_xy(qk)
+    parent_pixel_size = 2 * _MERCATOR_HALF / (2 ** len(qk))
+    ulx = -_MERCATOR_HALF + pxtile * parent_pixel_size
+    uly =  _MERCATOR_HALF - pytile * parent_pixel_size
+
+    sub_areas = {}
+    total = 0.0
+    dx = dy = None
+
+    if len(qk) == 18:
+        tif = 'quadkey-18char.tif'
+        ds = gdal.Open(f'{geotiff_dir}/{tif}')
+        raw = ds.GetRasterBand(1).ReadRaster(pxtile, pytile, 1, 1)
+        ds = None
+        (val,) = struct.unpack('f', raw)
+        count = 0.0 if math.isnan(val) else round(float(val), 1)
+        sub_areas[qk] = {'link': f'/dgg?quadkey={qk}', 'count': count}
+        total = count
+        dx = parent_pixel_size
+        dy = -parent_pixel_size
+    else:
+        max_depth = min(len(qk) + 3, 18)
+        for depth in range(len(qk) + 1, max_depth + 1):
+            tif = f'quadkey-{depth}char.tif'
+            ds = gdal.Open(f'{geotiff_dir}/{tif}')
+            suffix_len = depth - len(qk)
+            for suffix in itertools.product('0123', repeat=suffix_len):
+                child = qk + ''.join(suffix)
+                xtile, ytile = _quadkey_tile_xy(child)
+                raw = ds.GetRasterBand(1).ReadRaster(xtile, ytile, 1, 1)
+                (val,) = struct.unpack('f', raw)
+                count = 0.0 if math.isnan(val) else round(float(val), 1)
+                total += count
+                sub_areas[child] = {'link': f'/dgg?quadkey={child}', 'count': count}
+            ds = None
+        # dx/dy from the finest (deepest) child cells in EPSG:3857
+        finest_pixel_size = 2 * _MERCATOR_HALF / (2 ** max_depth)
+        dx = finest_pixel_size
+        dy = -finest_pixel_size
+
+    return {
+        'statusCode': 200,
+        'headers': {'Content-Type': 'application/json'},
+        'body': json.dumps({
+            'quadkey': qk,
+            'ulx': ulx,
+            'uly': uly,
+            'dx': dx,
+            'dy': dy,
+            'total': round(total, 1),
+            'sub-areas': sub_areas,
+        }) + '\n',
+    }
+
+
 def _make_mock_ds(gt):
     """Return a mock GDAL dataset with given GeoTransform and ReadRaster returning 1.5 floats."""
     def fake_read_raster(xoff, yoff, xsize, ysize):
@@ -188,6 +280,26 @@ _GT = {
     'geohash-6char.tif': (-180.0, 360.0/8192, 0, 90.0, 0, -180.0/4096),
     'geohash-7char.tif': (-180.0, 360.0/32768, 0, 90.0, 0, -180.0/16384),
     'geohash-8char.tif': (-180.0, 360.0/131072, 0, 90.0, 0, -180.0/65536),
+    # Quadkey N-char TIFFs: 2^N x 2^N pixels in EPSG:3857
+    # GT values unused by quadkey_handler (tile xy computed directly from key)
+    'quadkey-1char.tif':  (0, 1, 0, 0, 0, -1),
+    'quadkey-2char.tif':  (0, 1, 0, 0, 0, -1),
+    'quadkey-3char.tif':  (0, 1, 0, 0, 0, -1),
+    'quadkey-4char.tif':  (0, 1, 0, 0, 0, -1),
+    'quadkey-5char.tif':  (0, 1, 0, 0, 0, -1),
+    'quadkey-6char.tif':  (0, 1, 0, 0, 0, -1),
+    'quadkey-7char.tif':  (0, 1, 0, 0, 0, -1),
+    'quadkey-8char.tif':  (0, 1, 0, 0, 0, -1),
+    'quadkey-9char.tif':  (0, 1, 0, 0, 0, -1),
+    'quadkey-10char.tif': (0, 1, 0, 0, 0, -1),
+    'quadkey-11char.tif': (0, 1, 0, 0, 0, -1),
+    'quadkey-12char.tif': (0, 1, 0, 0, 0, -1),
+    'quadkey-13char.tif': (0, 1, 0, 0, 0, -1),
+    'quadkey-14char.tif': (0, 1, 0, 0, 0, -1),
+    'quadkey-15char.tif': (0, 1, 0, 0, 0, -1),
+    'quadkey-16char.tif': (0, 1, 0, 0, 0, -1),
+    'quadkey-17char.tif': (0, 1, 0, 0, 0, -1),
+    'quadkey-18char.tif': (0, 1, 0, 0, 0, -1),
 }
 
 
@@ -349,16 +461,87 @@ class DggHandlerTests(unittest.TestCase):
         self.assertEqual(resp_root['statusCode'], 400)
 
 
+class QuadkeyHandlerTests(unittest.TestCase):
+
+    def _call(self, qk):
+        event = {'rawPath': '/dgg', 'queryStringParameters': {'quadkey': qk}}
+        with patch.dict(os.environ, {'GEOTIFF_DIR': '/vsis3/test-bucket'}):
+            with patch('lambda.gdal.Open', side_effect=_patched_gdal_open):
+                return handler(event, None)
+
+    # --- error cases ---
+
+    def test_missing_quadkey(self):
+        event = {'rawPath': '/dgg', 'queryStringParameters': {}}
+        with patch.dict(os.environ, {'GEOTIFF_DIR': '/vsis3/test-bucket'}):
+            resp = handler(event, None)
+        self.assertEqual(resp['statusCode'], 400)
+
+    def test_quadkey_too_long(self):
+        resp = self._call('0' * 19)
+        self.assertEqual(resp['statusCode'], 400)
+
+    def test_invalid_quadkey_char(self):
+        resp = self._call('0234')  # '4' not valid
+        self.assertEqual(resp['statusCode'], 400)
+
+    # --- success cases ---
+
+    def test_returns_84_sub_areas_for_1char(self):
+        # 1-char key: depths 2, 3, 4 → 4 + 16 + 64 = 84 sub-areas
+        resp = self._call('0')
+        self.assertEqual(resp['statusCode'], 200)
+        body = json.loads(resp['body'])
+        self.assertEqual(len(body['sub-areas']), 84)
+
+    def test_sub_area_keys_are_descendants(self):
+        resp = self._call('023')
+        body = json.loads(resp['body'])
+        for key in body['sub-areas']:
+            self.assertTrue(key.startswith('023'))
+            self.assertIn(len(key), (4, 5, 6))
+
+    def test_response_keys(self):
+        resp = self._call('0')
+        body = json.loads(resp['body'])
+        for key in ('quadkey', 'ulx', 'uly', 'dx', 'dy', 'total', 'sub-areas'):
+            self.assertIn(key, body)
+
+    def test_eighteen_char_quadkey(self):
+        resp = self._call('0' * 18)
+        self.assertEqual(resp['statusCode'], 200)
+        body = json.loads(resp['body'])
+        self.assertEqual(len(body['sub-areas']), 1)
+        self.assertIn('0' * 18, body['sub-areas'])
+
+    def test_depth_cap_at_18(self):
+        # 16-char key: would want depths 17, 18, 19 — but 19 is beyond max, so only 17+18
+        resp = self._call('0' * 16)
+        body = json.loads(resp['body'])
+        # 4 + 16 = 20 sub-areas (depths 17 and 18 only)
+        self.assertEqual(len(body['sub-areas']), 20)
+
+    def test_dispatch_quadkey_param(self):
+        # /dgg?quadkey=... routes to quadkey_handler, not dgg_handler
+        resp = self._call('023')
+        body = json.loads(resp['body'])
+        self.assertIn('quadkey', body)
+        self.assertNotIn('geohash', body)
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument('--lonlat', nargs=2, type=str, metavar=('LON', 'LAT'))
     group.add_argument('--geohash', type=str)
+    group.add_argument('--quadkey', type=str)
     args = parser.parse_args()
 
     if args.lonlat:
         lon, lat = args.lonlat
         event = {'queryStringParameters': {'lon': lon, 'lat': lat}}
+    elif args.quadkey:
+        event = {'rawPath': '/dgg', 'queryStringParameters': {'quadkey': args.quadkey}}
     else:
         event = {'rawPath': '/dgg', 'queryStringParameters': {'geohash': args.geohash}}
 

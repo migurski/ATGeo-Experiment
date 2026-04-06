@@ -14,20 +14,31 @@ servers:
 paths:
   /dgg:
     get:
-      summary: Query population density by geohash
+      summary: Query population density by geohash or quadkey
       description: >
-        Accepts a geohash string (1–7 characters) and returns the 32 next-level
-        sub-areas (one per geohash base-32 character). Each response includes a
-        population count for each child cell read directly from the corresponding
-        geohash GeoTIFF via GDAL's /vsis3/ virtual filesystem.
+        Accepts either a geohash string (1–7 characters) or a quadkey string
+        (1–18 characters) as a mutually exclusive query parameter.
+
+
+        When querying by geohash, returns the 32 next-level sub-areas (one per
+        geohash base-32 character). Each response includes a population count
+        for each child cell read directly from the corresponding geohash GeoTIFF
+        via GDAL's /vsis3/ virtual filesystem.
+
+
+        When querying by quadkey, returns sub-areas spanning up to 3 levels
+        ahead (since each quadkey level adds only 4 sub-areas). For example,
+        querying "000" returns sub-areas for "0000", "00000", and "000000".
+        Population counts are read from the corresponding quadkey GeoTIFF.
 
       parameters:
         - name: geohash
           in: query
-          required: true
+          required: false
           description: >
             Geohash string using the standard base-32 alphabet
             (0–9, b–z excluding a, i, l, o). Must be 1–7 characters.
+            Mutually exclusive with quadkey.
           schema:
             type: string
             minLength: 1
@@ -37,25 +48,60 @@ paths:
               - 'u4p'
               - 'u4pruyd'
 
+        - name: quadkey
+          in: query
+          required: false
+          description: >
+            Quadkey string using digits 0–3. Must be 1–18 characters.
+            Returns sub-areas spanning up to 3 levels ahead (all intermediate
+            levels included). Mutually exclusive with geohash.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 18
+            examples:
+              - '0'
+              - '023'
+              - '023010212220330102'
+
       responses:
         '200':
-          description: Population density for each of the 32 child geohash cells
+          description: Population density for child cells
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/GeohashResponse'
+                oneOf:
+                  - $ref: '#/components/schemas/GeohashResponse'
+                  - $ref: '#/components/schemas/QuadkeyResponse'
               examples:
-                one_char:
+                geohash_one_char:
                   summary: 1-char geohash with 32 children
                   value:
                     geohash: 'u'
+                    ulx: 0.0
+                    uly: 90.0
+                    dx: 11.25
+                    dy: -5.625
                     total: 45000.0
                     sub-areas:
                       u0: {link: '/dgg?geohash=u0', count: 1234.5}
                       u1: {link: '/dgg?geohash=u1', count: 0.0}
+                quadkey_one_char:
+                  summary: 1-char quadkey with 84 sub-areas (depths 2, 3, 4)
+                  value:
+                    quadkey: '0'
+                    ulx: -20037508.34
+                    uly: 20037508.34
+                    dx: 2504688.54
+                    dy: -2504688.54
+                    total: 12345.0
+                    sub-areas:
+                      '00': {link: '/dgg?quadkey=00', count: 100.0}
+                      '000': {link: '/dgg?quadkey=000', count: 25.0}
+                      '0000': {link: '/dgg?quadkey=0000', count: 6.0}
 
         '400':
-          description: Missing, invalid, or too-long geohash
+          description: Missing, invalid, or too-long geohash or quadkey
           content:
             text/plain:
               schema:
@@ -67,6 +113,12 @@ paths:
                   value: "ValueError: geohash too long (max 7 characters)\n"
                 invalid_char:
                   value: "ValueError: invalid geohash character\n"
+                quadkey_missing:
+                  value: "Missing quadkey\n"
+                quadkey_too_long:
+                  value: "ValueError: quadkey too long (max 18 characters)\n"
+                quadkey_invalid_char:
+                  value: "ValueError: invalid quadkey character\n"
 
   /:
     get:
@@ -198,6 +250,53 @@ components:
                 type: string
                 description: Relative URL to drill into this child cell.
                 example: '/dgg?geohash=u4p0'
+              count:
+                type: number
+                description: Population count for this child cell, rounded to 1 decimal place.
+                example: 1234.5
+
+    QuadkeyResponse:
+      type: object
+      required: [quadkey, ulx, uly, dx, dy, total, sub-areas]
+      properties:
+        quadkey:
+          type: string
+          description: The input quadkey string.
+          example: '023'
+        ulx:
+          type: number
+          description: X coordinate of the upper-left corner of the queried cell in EPSG:3857 (meters).
+          example: -20037508.34
+        uly:
+          type: number
+          description: Y coordinate of the upper-left corner of the queried cell in EPSG:3857 (meters).
+          example: 20037508.34
+        dx:
+          type: number
+          description: Finest child cell width in EPSG:3857 meters (positive, west→east).
+          example: 4891.97
+        dy:
+          type: number
+          description: Finest child cell height in EPSG:3857 meters (negative, north→south).
+          example: -4891.97
+        total:
+          type: number
+          description: Sum of all child population counts, rounded to 1 decimal place.
+          example: 12345.0
+        sub-areas:
+          type: object
+          description: >
+            Map of child quadkey string to sub-area data. Spans up to 3 levels
+            ahead (all intermediate levels included). Keys are the input quadkey
+            concatenated with 1, 2, or 3 additional base-4 digits.
+          additionalProperties:
+            type: object
+            required: [link, count]
+            properties:
+              link:
+                type: string
+                description: Relative URL to drill into this child cell.
+                example: '/dgg?quadkey=0230'
               count:
                 type: number
                 description: Population count for this child cell, rounded to 1 decimal place.

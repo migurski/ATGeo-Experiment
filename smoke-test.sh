@@ -98,6 +98,48 @@ smoke_test_dgg() {
     echo 'OK'
 }
 
+# Usage: check_quadkey_json <url> <expected_count> <expected_total> <tolerance>
+check_quadkey_json() {
+    local url="$1"
+    local exp_count="$2"
+    local exp_total="$3"
+    local tolerance="$4"
+
+    curl -sf "${url}" | jq --argjson exp_count "${exp_count}" \
+        --argjson exp_total "${exp_total}" \
+        --argjson tol "${tolerance}" '
+        "\(.quadkey) total: \(.total) sub-areas: \(.["sub-areas"] | length)",
+        if (.["sub-areas"] | length) != $exp_count then error("expected \($exp_count) sub-areas, got \(.["sub-areas"] | length)") else empty end,
+        if (.total - $exp_total | fabs) > $tol then error("expected total ~\($exp_total), got \(.total)") else "OK" end
+    '
+}
+
+smoke_test_quadkey() {
+    local label="$1"
+    local url="$2"
+
+    echo "--- ${label} /dgg 7-char quadkey (expect 84 sub-areas) ---"
+    check_quadkey_json "${url}/dgg?quadkey=0230102" 84 0 9999999
+
+    echo "--- ${label} /dgg 16-char quadkey (expect 20 sub-areas, depths 17+18) ---"
+    check_quadkey_json "${url}/dgg?quadkey=0230102122203301" 20 0 9999999
+
+    echo "--- ${label} /dgg 18-char quadkey (expect 1 sub-area) ---"
+    check_quadkey_json "${url}/dgg?quadkey=023010212220330102" 1 0 9999999
+
+    echo "--- ${label} /dgg 19-char quadkey (expect HTTP 400) ---"
+    status=$(curl -s -o /dev/null -w "%{http_code}" "${url}/dgg?quadkey=0230102122203301023")
+    echo "${status}"
+    test "${status}" = "400"
+    echo 'OK'
+
+    echo "--- ${label} /dgg missing quadkey (expect HTTP 400) ---"
+    status=$(curl -s -o /dev/null -w "%{http_code}" "${url}/dgg?quadkey=")
+    echo "${status}"
+    test "${status}" = "400"
+    echo 'OK'
+}
+
 smoke_test_local() {
     echo "--- local Python 1 digit (expect 10x10, total~164311) ---"
     GEOTIFF_DIR=geotiffs python lambda.py --lonlat -122.3 37.8 \
@@ -140,9 +182,18 @@ smoke_test_local() {
         if (.["sub-areas"] | length) != 32 then error("expected 32 sub-areas, got \(.["sub-areas"] | length)") else empty end,
         if (.total - $exp_total | fabs) > $tol then error("expected total ~\($exp_total), got \(.total)") else "OK" end
         '
+
+    echo "--- local Python /dgg 7-char quadkey (expect 84 sub-areas) ---"
+    GEOTIFF_DIR=geotiffs python lambda.py --quadkey 0230102 \
+        | jq '
+        "\(.quadkey) total: \(.total) sub-areas: \(.["sub-areas"] | length)",
+        if (.["sub-areas"] | length) != 84 then error("expected 84 sub-areas, got \(.["sub-areas"] | length)") else "OK" end
+        '
 }
 
 smoke_test_local
 smoke_test_dd "C++" "${function_cpp_url%/}"
 smoke_test_dgg "C++" "${function_cpp_url%/}"
 smoke_test_dgg "Python" "${function_url%/}"
+smoke_test_quadkey "C++" "${function_cpp_url%/}"
+smoke_test_quadkey "Python" "${function_url%/}"

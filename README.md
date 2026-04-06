@@ -221,6 +221,81 @@ a neighbourhood. The cells here are about 1km across.
 The cell for 14th & Broadway is `9q9p1dh` with just 6 people. Each cell is now about 150m
 across and we're at the limit of HRSL precision. You stop here.
 
+## Quadkey Drill-Down with `/dgg`
+
+The `/dgg` endpoint also accepts a `quadkey` query parameter (1–18 characters using
+digits 0–3). Unlike geohash which has 32 children per level, quadkey is base-4 — each
+additional character adds only 4 sub-areas. To make drill-down practical, each response
+spans **up to 3 levels ahead**, returning all intermediate sub-areas. Coordinates in the
+response are in EPSG:3857 (Web Mercator meters).
+
+The same location, 14th & Broadway in Downtown Oakland, has quadkey `0230102122203301...`.
+
+### One-Character Quadkey (~10,000km)
+
+`0` covers the upper-left quadrant of the world (western hemisphere, northern half).
+Request [/dgg?quadkey=0](https://atgeo-experiment.teczno.com/dgg?quadkey=0) to get
+sub-areas at depths 2, 3, and 4 (4 + 16 + 64 = 84 entries):
+
+```JSON
+{
+    "quadkey": "0",
+    "ulx": -20037508.34,
+    "uly": 20037508.34,
+    "dx": 2504688.54,
+    "dy": -2504688.54,
+    "total": ...,
+    "sub-areas": {
+        "00": {"link": "/dgg?quadkey=00", "count": ...},
+        "000": {"link": "/dgg?quadkey=000", "count": ...},
+        "0000": {"link": "/dgg?quadkey=0000", "count": ...},
+        ...
+    }
+}
+```
+
+### Seven-Character Quadkey (~150km)
+
+`0230102` covers a large region of the western United States. Request
+[/dgg?quadkey=0230102](https://atgeo-experiment.teczno.com/dgg?quadkey=0230102) for
+sub-areas at depths 8, 9, and 10:
+
+```JSON
+{
+    "quadkey": "0230102",
+    "ulx": ...,
+    "uly": ...,
+    "dx": 39135.76,
+    "dy": -39135.76,
+    "total": ...,
+    "sub-areas": {
+        "02301020": {"link": "/dgg?quadkey=02301020", "count": ...},
+        "023010200": {"link": "/dgg?quadkey=023010200", "count": ...},
+        "0230102000": {"link": "/dgg?quadkey=0230102000", "count": ...},
+        ...
+    }
+}
+```
+
+### Eighteen-Character Quadkey (~150m)
+
+At 18 characters, you've reached the finest available resolution. The response contains
+a single sub-area with the population count for that cell:
+
+```JSON
+{
+    "quadkey": "023010212220330102",
+    "ulx": ...,
+    "uly": ...,
+    "dx": 152.87,
+    "dy": -152.87,
+    "total": ...,
+    "sub-areas": {
+        "023010212220330102": {"link": "/dgg?quadkey=023010212220330102", "count": ...}
+    }
+}
+```
+
 ## Local CLI
 
 Both implementations support a CLI mode against a local GeoTIFF directory.
@@ -238,6 +313,7 @@ Set up the `GDAL` package in a local environment, then:
 ```bash
 GEOTIFF_DIR=geotiffs python lambda.py --lonlat -122.3 37.8
 GEOTIFF_DIR=geotiffs python lambda.py --geohash 9q9p1d
+GEOTIFF_DIR=geotiffs python lambda.py --quadkey 0230102
 ```
 
 **C++ (via Docker):**
