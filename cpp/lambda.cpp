@@ -122,6 +122,7 @@ static invocation_response quadkey_handler(
 
             int suffix_len = depth - static_cast<int>(qk.size());
             long long num_children = 1LL << (2 * suffix_len);  // 4^suffix_len
+            double depth_total = 0.0;
             for (long long i = 0; i < num_children; ++i) {
                 // Build suffix string from base-4 representation of i, zero-padded to suffix_len
                 std::string child = qk;
@@ -141,10 +142,12 @@ static invocation_response quadkey_handler(
                     return invocation_response::failure("RasterIO failed", "GDALError");
                 }
                 double count = std::isnan(val) ? 0.0 : std::round(static_cast<double>(val) * 10.0) / 10.0;
-                total += count;
+                depth_total += count;
                 results.push_back({ child, count });
             }
             GDALClose(ds);
+            if (depth == max_depth)
+                total = depth_total;  // use only the finest level for total
         }
         double finest_pixel_size = 2.0 * MERCATOR_HALF / static_cast<double>(1LL << max_depth);
         dx = finest_pixel_size;

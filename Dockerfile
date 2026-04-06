@@ -10,7 +10,7 @@ RUN apt update -y \
 ENV PIP_BREAK_SYSTEM_PACKAGES=1
 RUN pip3 install 'awslambdaric==2.2.1'
 
-COPY lambda.py geohash.py /var/task/
+COPY lambda.py geohash.py quadkey.py /var/task/
 
 WORKDIR /var/task
 ENTRYPOINT ["python3", "-m", "awslambdaric"]

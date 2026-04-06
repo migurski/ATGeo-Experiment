@@ -223,15 +223,18 @@ def quadkey_handler(event, context):
             tif = f'quadkey-{depth}char.tif'
             ds = gdal.Open(f'{geotiff_dir}/{tif}')
             suffix_len = depth - len(qk)
+            depth_total = 0.0
             for suffix in itertools.product('0123', repeat=suffix_len):
                 child = qk + ''.join(suffix)
                 xtile, ytile = _quadkey_tile_xy(child)
                 raw = ds.GetRasterBand(1).ReadRaster(xtile, ytile, 1, 1)
                 (val,) = struct.unpack('f', raw)
                 count = 0.0 if math.isnan(val) else round(float(val), 1)
-                total += count
+                depth_total += count
                 sub_areas[child] = {'link': f'/dgg?quadkey={child}', 'count': count}
             ds = None
+            if depth == max_depth:
+                total = depth_total  # use only the finest level for total
         # dx/dy from the finest (deepest) child cells in EPSG:3857
         finest_pixel_size = 2 * _MERCATOR_HALF / (2 ** max_depth)
         dx = finest_pixel_size

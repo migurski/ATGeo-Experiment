@@ -118,14 +118,14 @@ smoke_test_quadkey() {
     local label="$1"
     local url="$2"
 
-    echo "--- ${label} /dgg 7-char quadkey (expect 84 sub-areas) ---"
-    check_quadkey_json "${url}/dgg?quadkey=0230102" 84 0 9999999
+    echo "--- ${label} /dgg 7-char quadkey (expect 84 sub-areas, total~11187914) ---"
+    check_quadkey_json "${url}/dgg?quadkey=0230102" 84 11187914 100000
 
-    echo "--- ${label} /dgg 16-char quadkey (expect 20 sub-areas, depths 17+18) ---"
-    check_quadkey_json "${url}/dgg?quadkey=0230102122203301" 20 0 9999999
+    echo "--- ${label} /dgg 16-char quadkey (expect 20 sub-areas, total~1975) ---"
+    check_quadkey_json "${url}/dgg?quadkey=0230102122203301" 20 1975 100
 
-    echo "--- ${label} /dgg 18-char quadkey (expect 1 sub-area) ---"
-    check_quadkey_json "${url}/dgg?quadkey=023010212220330102" 1 0 9999999
+    echo "--- ${label} /dgg 18-char quadkey (expect 1 sub-area, total~0) ---"
+    check_quadkey_json "${url}/dgg?quadkey=023010212220330102" 1 0 10
 
     echo "--- ${label} /dgg 19-char quadkey (expect HTTP 400) ---"
     status=$(curl -s -o /dev/null -w "%{http_code}" "${url}/dgg?quadkey=0230102122203301023")
@@ -183,11 +183,12 @@ smoke_test_local() {
         if (.total - $exp_total | fabs) > $tol then error("expected total ~\($exp_total), got \(.total)") else "OK" end
         '
 
-    echo "--- local Python /dgg 7-char quadkey (expect 84 sub-areas) ---"
+    echo "--- local Python /dgg 7-char quadkey (expect 84 sub-areas, total~11187914) ---"
     GEOTIFF_DIR=geotiffs python lambda.py --quadkey 0230102 \
-        | jq '
+        | jq --argjson exp_total 11187914 --argjson tol 100000 '
         "\(.quadkey) total: \(.total) sub-areas: \(.["sub-areas"] | length)",
-        if (.["sub-areas"] | length) != 84 then error("expected 84 sub-areas, got \(.["sub-areas"] | length)") else "OK" end
+        if (.["sub-areas"] | length) != 84 then error("expected 84 sub-areas, got \(.["sub-areas"] | length)") else empty end,
+        if (.total - $exp_total | fabs) > $tol then error("expected total ~\($exp_total), got \(.total)") else "OK" end
         '
 }
 
