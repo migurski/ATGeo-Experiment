@@ -219,26 +219,38 @@ def quadkey_handler(event, context):
         dy = -parent_pixel_size
     else:
         max_depth = min(len(qk) + 3, 18)
-        for depth in range(len(qk) + 1, max_depth + 1):
-            tif = f'quadkey-{depth}char.tif'
-            ds = gdal.Open(f'{geotiff_dir}/{tif}')
-            suffix_len = depth - len(qk)
-            depth_total = 0.0
-            for suffix in itertools.product('0123', repeat=suffix_len):
-                child = qk + ''.join(suffix)
-                xtile, ytile = _quadkey_tile_xy(child)
-                raw = ds.GetRasterBand(1).ReadRaster(xtile, ytile, 1, 1)
-                (val,) = struct.unpack('f', raw)
-                count = 0.0 if math.isnan(val) else round(float(val), 1)
-                depth_total += count
-                sub_areas[child] = {'link': f'/dgg?quadkey={child}', 'count': count}
-            ds = None
-            if depth == max_depth:
-                total = depth_total  # use only the finest level for total
-        # dx/dy from the finest (deepest) child cells in EPSG:3857
+        finest_suffix_len = max_depth - len(qk)
         finest_pixel_size = 2 * _MERCATOR_HALF / (2 ** max_depth)
         dx = finest_pixel_size
         dy = -finest_pixel_size
+
+        # Read all finest-level children from one TIFF, then sum groups of 4
+        # to derive intermediate levels — avoids opening multiple TIFFs.
+        tif = f'quadkey-{max_depth}char.tif'
+        ds = gdal.Open(f'{geotiff_dir}/{tif}')
+        finest_counts = {}
+        for suffix in itertools.product('0123', repeat=finest_suffix_len):
+            child = qk + ''.join(suffix)
+            xtile, ytile = _quadkey_tile_xy(child)
+            raw = ds.GetRasterBand(1).ReadRaster(xtile, ytile, 1, 1)
+            (val,) = struct.unpack('f', raw)
+            finest_counts[child] = 0.0 if math.isnan(val) else round(float(val), 1)
+        ds = None
+
+        total = sum(finest_counts.values())
+
+        # Populate sub_areas for all depths from finest back up to depth+1
+        # by summing groups of 4 children at each level
+        counts_at_depth = finest_counts
+        for depth in range(max_depth, len(qk), -1):
+            for key, count in counts_at_depth.items():
+                sub_areas[key] = {'link': f'/dgg?quadkey={key}', 'count': round(count, 1)}
+            if depth > len(qk) + 1:
+                parent_counts = {}
+                for key, count in counts_at_depth.items():
+                    parent = key[:-1]
+                    parent_counts[parent] = parent_counts.get(parent, 0.0) + count
+                counts_at_depth = parent_counts
 
     return {
         'statusCode': 200,

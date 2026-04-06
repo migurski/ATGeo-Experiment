@@ -113,45 +113,66 @@ static invocation_response quadkey_handler(
         int max_depth = static_cast<int>(qk.size()) + 3;
         if (max_depth > 18) max_depth = 18;
 
-        // Generate all suffixes of a given length in base-4 order
-        for (int depth = static_cast<int>(qk.size()) + 1; depth <= max_depth; ++depth) {
-            std::string tif_path = geotiff_dir + "/quadkey-" + std::to_string(depth) + "char.tif";
-            GDALDataset* ds = static_cast<GDALDataset*>(GDALOpen(tif_path.c_str(), GA_ReadOnly));
-            if (!ds)
-                return invocation_response::failure("GDALOpen failed for " + tif_path, "GDALError");
-
-            int suffix_len = depth - static_cast<int>(qk.size());
-            long long num_children = 1LL << (2 * suffix_len);  // 4^suffix_len
-            double depth_total = 0.0;
-            for (long long i = 0; i < num_children; ++i) {
-                // Build suffix string from base-4 representation of i, zero-padded to suffix_len
-                std::string child = qk;
-                child.resize(qk.size() + suffix_len, '0');
-                long long tmp = i;
-                for (int j = suffix_len - 1; j >= 0; --j) {
-                    child[qk.size() + j] = static_cast<char>('0' + (tmp % 4));
-                    tmp /= 4;
-                }
-                auto [cx, cy] = quadkey_tile_xy(child);
-                float val;
-                CPLErr err = ds->GetRasterBand(1)->RasterIO(
-                    GF_Read, static_cast<int>(cx), static_cast<int>(cy), 1, 1,
-                    &val, 1, 1, GDT_Float32, 0, 0);
-                if (err != CE_None) {
-                    GDALClose(ds);
-                    return invocation_response::failure("RasterIO failed", "GDALError");
-                }
-                double count = std::isnan(val) ? 0.0 : std::round(static_cast<double>(val) * 10.0) / 10.0;
-                depth_total += count;
-                results.push_back({ child, count });
-            }
-            GDALClose(ds);
-            if (depth == max_depth)
-                total = depth_total;  // use only the finest level for total
-        }
         double finest_pixel_size = 2.0 * MERCATOR_HALF / static_cast<double>(1LL << max_depth);
         dx = finest_pixel_size;
         dy = -finest_pixel_size;
+
+        // Read all finest-level children from one TIFF, then sum groups of 4
+        // to derive intermediate levels — avoids opening multiple TIFFs.
+        std::string tif_path = geotiff_dir + "/quadkey-" + std::to_string(max_depth) + "char.tif";
+        GDALDataset* ds = static_cast<GDALDataset*>(GDALOpen(tif_path.c_str(), GA_ReadOnly));
+        if (!ds)
+            return invocation_response::failure("GDALOpen failed for " + tif_path, "GDALError");
+
+        int finest_suffix_len = max_depth - static_cast<int>(qk.size());
+        long long num_finest = 1LL << (2 * finest_suffix_len);  // 4^finest_suffix_len
+        std::vector<std::pair<std::string, double>> finest;
+        finest.reserve(num_finest);
+
+        for (long long i = 0; i < num_finest; ++i) {
+            std::string child = qk;
+            child.resize(qk.size() + finest_suffix_len, '0');
+            long long tmp = i;
+            for (int j = finest_suffix_len - 1; j >= 0; --j) {
+                child[qk.size() + j] = static_cast<char>('0' + (tmp % 4));
+                tmp /= 4;
+            }
+            auto [cx, cy] = quadkey_tile_xy(child);
+            float val;
+            CPLErr err = ds->GetRasterBand(1)->RasterIO(
+                GF_Read, static_cast<int>(cx), static_cast<int>(cy), 1, 1,
+                &val, 1, 1, GDT_Float32, 0, 0);
+            if (err != CE_None) {
+                GDALClose(ds);
+                return invocation_response::failure("RasterIO failed", "GDALError");
+            }
+            double count = std::isnan(val) ? 0.0 : std::round(static_cast<double>(val) * 10.0) / 10.0;
+            total += count;
+            finest.push_back({ child, count });
+        }
+        GDALClose(ds);
+
+        // Build intermediate levels by summing groups of 4 from the finest level upward.
+        // Process depths from max_depth down to qk.size()+1, populating results at each.
+        // current_level holds counts at the depth being processed (starts at finest).
+        std::vector<std::pair<std::string, double>> current_level = finest;
+        for (int depth = max_depth; depth > static_cast<int>(qk.size()); --depth) {
+            for (auto& [key, count] : current_level)
+                results.push_back({ key, count });
+            if (depth > static_cast<int>(qk.size()) + 1) {
+                // Aggregate into parent level: sum each group of 4 siblings (unrounded)
+                std::vector<std::pair<std::string, double>> parent_level;
+                parent_level.reserve(current_level.size() / 4);
+                for (size_t i = 0; i < current_level.size(); i += 4) {
+                    std::string parent_key = current_level[i].first.substr(0, depth - 1);
+                    double parent_count = 0.0;
+                    for (size_t j = i; j < i + 4 && j < current_level.size(); ++j)
+                        parent_count += current_level[j].second;
+                    parent_level.push_back({ parent_key, parent_count });
+                }
+                current_level = std::move(parent_level);
+            }
+        }
     }
 
     total = std::round(total * 10.0) / 10.0;
