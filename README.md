@@ -102,7 +102,7 @@ Let's use the same location, 14th & Broadway in Downtown Oakland, whose geohash 
     "sub-areas": {
         "9q": {"link": "/dgg?geohash=9q", "count": 35974940.0},
         "9h": {"link": "/dgg?geohash=9h", "count": 8267192.0},
-        ...
+        …
     }
 }
 ```
@@ -126,7 +126,7 @@ a comfortably large anonymity set. It's safe to look deeper.
     "sub-areas": {
         "9q9": {"link": "/dgg?geohash=9q9", "count": 5601428.5},
         "9qh": {"link": "/dgg?geohash=9qh", "count": 8267192.0},
-        ...
+        …
     }
 }
 ```
@@ -148,7 +148,7 @@ The Bay Area falls in `9q9` with 5.6 million people. Still a large set. Look dee
     "sub-areas": {
         "9q9p": {"link": "/dgg?geohash=9q9p", "count": 718015.1},
         "9q9k": {"link": "/dgg?geohash=9q9k", "count": 956026.2},
-        ...
+        …
     }
 }
 ```
@@ -170,7 +170,7 @@ Oakland is in `9q9p` with 718K people. Still comfortable. Keep going.
     "sub-areas": {
         "9q9p1": {"link": "/dgg?geohash=9q9p1", "count": 70902.1},
         "9q9p3": {"link": "/dgg?geohash=9q9p3", "count": 95934.0},
-        ...
+        …
     }
 }
 ```
@@ -191,7 +191,7 @@ Downtown Oakland is in `9q9p1` with 71K people. Getting smaller but still reason
     "total": 71918.8,
     "sub-areas": {
         "9q9p1d": {"link": "/dgg?geohash=9q9p1d", "count": 2936.7},
-        ...
+        …
     }
 }
 ```
@@ -213,7 +213,7 @@ a neighbourhood. The cells here are about 1km across.
     "total": 2936.7,
     "sub-areas": {
         "9q9p1dh": {"link": "/dgg?geohash=9q9p1dh", "count": 6.2},
-        ...
+        …
     }
 }
 ```
@@ -229,7 +229,7 @@ additional character adds only 4 sub-areas. To make drill-down practical, each r
 spans **up to 3 levels ahead**, returning all intermediate sub-areas. Coordinates in the
 response are in EPSG:3857 (Web Mercator meters).
 
-The same location, 14th & Broadway in Downtown Oakland, has quadkey `0230102122203301...`.
+The same location, 14th & Broadway in Downtown Oakland, has quadkey `0230102122203301…`.
 
 ### One-Character Quadkey (~10,000km)
 
@@ -244,12 +244,12 @@ sub-areas at depths 2, 3, and 4 (4 + 16 + 64 = 84 entries):
     "uly": 20037508.34,
     "dx": 2504688.54,
     "dy": -2504688.54,
-    "total": ...,
+    "total": …,
     "sub-areas": {
-        "00": {"link": "/dgg?quadkey=00", "count": ...},
-        "000": {"link": "/dgg?quadkey=000", "count": ...},
-        "0000": {"link": "/dgg?quadkey=0000", "count": ...},
-        ...
+        "00": {"link": "/dgg?quadkey=00", "count": …},
+        "000": {"link": "/dgg?quadkey=000", "count": …},
+        "0000": {"link": "/dgg?quadkey=0000", "count": …},
+        …
     }
 }
 ```
@@ -263,16 +263,16 @@ sub-areas at depths 8, 9, and 10:
 ```JSON
 {
     "quadkey": "0230102",
-    "ulx": ...,
-    "uly": ...,
+    "ulx": …,
+    "uly": …,
     "dx": 39135.76,
     "dy": -39135.76,
-    "total": ...,
+    "total": …,
     "sub-areas": {
-        "02301020": {"link": "/dgg?quadkey=02301020", "count": ...},
-        "023010200": {"link": "/dgg?quadkey=023010200", "count": ...},
-        "0230102000": {"link": "/dgg?quadkey=0230102000", "count": ...},
-        ...
+        "02301020": {"link": "/dgg?quadkey=02301020", "count": …},
+        "023010200": {"link": "/dgg?quadkey=023010200", "count": …},
+        "0230102000": {"link": "/dgg?quadkey=0230102000", "count": …},
+        …
     }
 }
 ```
@@ -285,13 +285,13 @@ a single sub-area with the population count for that cell:
 ```JSON
 {
     "quadkey": "023010212220330102",
-    "ulx": ...,
-    "uly": ...,
+    "ulx": …,
+    "uly": …,
     "dx": 152.87,
     "dy": -152.87,
-    "total": ...,
+    "total": …,
     "sub-areas": {
-        "023010212220330102": {"link": "/dgg?quadkey=023010212220330102", "count": ...}
+        "023010212220330102": {"link": "/dgg?quadkey=023010212220330102", "count": …}
     }
 }
 ```
