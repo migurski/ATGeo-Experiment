@@ -306,28 +306,10 @@ Start by building `geotiffs` (slow!):
 make
 ```
 
-**Python:**
-
 Set up the `GDAL` package in a local environment, then:
 
 ```bash
 GEOTIFF_DIR=geotiffs python lambda.py --lonlat -122.3 37.8
 GEOTIFF_DIR=geotiffs python lambda.py --geohash 9q9p1d
 GEOTIFF_DIR=geotiffs python lambda.py --quadkey 0230102
-```
-
-**C++ (via Docker):**
-
-```bash
-bash cpp/build.sh   # builds atgeo-cpp-cli image
-
-docker run --rm \
-  -v "$(pwd)/geotiffs:/geotiffs:ro" \
-  -e GEOTIFF_DIR=/geotiffs \
-  atgeo-cpp-cli --lonlat -122.3 37.8
-
-docker run --rm \
-  -v "$(pwd)/geotiffs:/geotiffs:ro" \
-  -e GEOTIFF_DIR=/geotiffs \
-  atgeo-cpp-cli --geohash 9q9p1d
 ```
