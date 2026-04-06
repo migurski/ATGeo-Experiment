@@ -57,7 +57,7 @@ Resources:
         - arm64
       Role: !GetAtt LambdaExecutionRole.Arn
       Timeout: 60
-      MemorySize: 512
+      MemorySize: 256
       Environment:
         Variables:
           GEOTIFF_DIR: !Sub '/vsis3/${DataBucket}'
@@ -91,7 +91,7 @@ Resources:
         - arm64
       Role: !GetAtt LambdaExecutionRole.Arn
       Timeout: 60
-      MemorySize: 512
+      MemorySize: 256
       Environment:
         Variables:
           GEOTIFF_DIR: !Sub '/vsis3/${DataBucket}'
