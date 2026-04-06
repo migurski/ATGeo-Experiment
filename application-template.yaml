@@ -61,6 +61,8 @@ Resources:
       Environment:
         Variables:
           GEOTIFF_DIR: !Sub '/vsis3/${DataBucket}'
+          GDAL_DISABLE_READDIR_ON_OPEN: EMPTY_DIR
+          CPL_VSIL_CURL_ALLOWED_EXTENSIONS: .tif
       Code:
         ImageUri: !Ref ImageUri
 
@@ -93,6 +95,8 @@ Resources:
       Environment:
         Variables:
           GEOTIFF_DIR: !Sub '/vsis3/${DataBucket}'
+          GDAL_DISABLE_READDIR_ON_OPEN: EMPTY_DIR
+          CPL_VSIL_CURL_ALLOWED_EXTENSIONS: .tif
       Code:
         S3Bucket: !ImportValue
           'Fn::Sub': '${BootstrapStackName}-DeploymentBucketName'
