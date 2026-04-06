@@ -11,9 +11,6 @@ Parameters:
     Type: String
     Description: ECR image URI including tag for the Lambda function
 
-  CppPackageKey:
-    Type: String
-    Description: S3 key for the C++ Lambda ZIP package in the deployment bucket
 
 Resources:
   DataBucket:
@@ -80,42 +77,6 @@ Resources:
       Principal: '*'
       FunctionUrlAuthType: NONE
 
-  LambdaFunctionCpp:
-    Type: AWS::Lambda::Function
-    Properties:
-      FunctionName: atgeo-experiment-cpp
-      PackageType: Zip
-      Runtime: provided.al2023
-      Handler: bootstrap
-      Architectures:
-        - arm64
-      Role: !GetAtt LambdaExecutionRole.Arn
-      Timeout: 60
-      MemorySize: 256
-      Environment:
-        Variables:
-          GEOTIFF_DIR: !Sub '/vsis3/${DataBucket}'
-          GDAL_DISABLE_READDIR_ON_OPEN: EMPTY_DIR
-          CPL_VSIL_CURL_ALLOWED_EXTENSIONS: .tif
-      Code:
-        S3Bucket: !ImportValue
-          'Fn::Sub': '${BootstrapStackName}-DeploymentBucketName'
-        S3Key: !Ref CppPackageKey
-
-  LambdaFunctionCppUrl:
-    Type: AWS::Lambda::Url
-    Properties:
-      AuthType: NONE
-      TargetFunctionArn: !Ref LambdaFunctionCpp
-
-  LambdaFunctionCppUrlPermission:
-    Type: AWS::Lambda::Permission
-    Properties:
-      FunctionName: !Ref LambdaFunctionCpp
-      Action: lambda:InvokeFunctionUrl
-      Principal: '*'
-      FunctionUrlAuthType: NONE
-
   CppCertificate:
     Type: AWS::CertificateManager::Certificate
     Properties:
@@ -152,20 +113,20 @@ Resources:
       DistributionConfig:
         Aliases:
           - atgeo-experiment.teczno.com
-        Comment: ATGeo Experiment C++ Lambda
+        Comment: ATGeo Experiment Python Lambda
         DefaultCacheBehavior:
           AllowedMethods: [GET, HEAD, OPTIONS]
           CachePolicyId: !Ref CppCachePolicy
           OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac  # AllViewerExceptHostHeader
-          TargetOriginId: CppLambdaOrigin
+          TargetOriginId: PythonLambdaOrigin
           ViewerProtocolPolicy: redirect-to-https
         Enabled: true
         HttpVersion: http2
         Origins:
-          - Id: CppLambdaOrigin
+          - Id: PythonLambdaOrigin
             DomainName: !Select
               - 2
-              - !Split ['/', !GetAtt LambdaFunctionCppUrl.FunctionUrl]
+              - !Split ['/', !GetAtt LambdaFunctionUrl.FunctionUrl]
             CustomOriginConfig:
               OriginProtocolPolicy: https-only
         ViewerCertificate:
@@ -175,18 +136,14 @@ Resources:
 
 Outputs:
   FunctionUrl:
-    Description: Direct Lambda URL for the Python function (for testing /dgg)
+    Description: Direct Lambda URL for the Python function (for testing)
     Value: !GetAtt LambdaFunctionUrl.FunctionUrl
 
-  FunctionCppUrl:
-    Description: Direct Lambda URL for the C++ function (not publicly advertised)
-    Value: !GetAtt LambdaFunctionCppUrl.FunctionUrl
-
-  FunctionCppCustomDomain:
-    Description: Custom domain URL for the C++ Lambda function
+  CustomDomain:
+    Description: Custom domain URL for the Python Lambda function
     Value: https://atgeo-experiment.teczno.com/
 
-  CppCloudFrontDomain:
+  CloudFrontDomain:
     Description: CloudFront domain name — create a CNAME from atgeo-experiment.teczno.com to this value
     Value: !GetAtt CppCloudFrontDistribution.DomainName
 

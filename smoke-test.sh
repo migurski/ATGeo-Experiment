@@ -8,13 +8,7 @@ function_url=$(aws cloudformation describe-stacks \
     --query "Stacks[0].Outputs[?OutputKey=='FunctionUrl'].OutputValue" \
     --output text)
 
-function_cpp_url=$(aws cloudformation describe-stacks \
-    --stack-name "${app_stack_name}" \
-    --query "Stacks[0].Outputs[?OutputKey=='FunctionCppUrl'].OutputValue" \
-    --output text)
-
 echo "Function URL (Python): ${function_url}"
-echo "Function URL (C++):    ${function_cpp_url}"
 
 # Usage: check_dd_json <url> <expected_rows> <expected_cols> <expected_total> <tolerance>
 check_dd_json() {
@@ -159,30 +153,6 @@ smoke_test_local() {
         if (.total - $exp_total | fabs) > $tol then error("expected total ~\($exp_total), got \(.total)") else "OK" end
         '
 
-    echo "--- local C++ 1 digit (expect 10x10, total~164311) ---"
-    docker run --rm \
-        -v "$(pwd)/geotiffs:/geotiffs:ro" \
-        -e GEOTIFF_DIR=/geotiffs \
-        atgeo-cpp-cli --lonlat -122.3 37.8 \
-        | jq --argjson exp_rows 10 --argjson exp_cols 10 \
-             --argjson exp_total 164311 --argjson tol 1000 '
-        "\(.ulx) \(.uly) \(.dx) \(.dy) \(.data | length) x \(.data[0] | length) total: \(.total)",
-        if (.data | length) != $exp_rows then error("expected \($exp_rows) rows, got \(.data | length)") else empty end,
-        if (.data[0] | length) != $exp_cols then error("expected \($exp_cols) cols, got \(.data[0] | length)") else empty end,
-        if (.total - $exp_total | fabs) > $tol then error("expected total ~\($exp_total), got \(.total)") else "OK" end
-        '
-
-    echo "--- local C++ /dgg 6-char geohash (expect 32 sub-areas, total~2936.7) ---"
-    docker run --rm \
-        -v "$(pwd)/geotiffs:/geotiffs:ro" \
-        -e GEOTIFF_DIR=/geotiffs \
-        atgeo-cpp-cli --geohash 9q9p1d \
-        | jq --argjson exp_total 2936.7 --argjson tol 100 '
-        "\(.geohash) total: \(.total) sub-areas: \(.["sub-areas"] | length)",
-        if (.["sub-areas"] | length) != 32 then error("expected 32 sub-areas, got \(.["sub-areas"] | length)") else empty end,
-        if (.total - $exp_total | fabs) > $tol then error("expected total ~\($exp_total), got \(.total)") else "OK" end
-        '
-
     echo "--- local Python /dgg 7-char quadkey (expect 84 sub-areas, total~11187914) ---"
     GEOTIFF_DIR=geotiffs python lambda.py --quadkey 0230102 \
         | jq --argjson exp_total 11187914 --argjson tol 100000 '
@@ -193,8 +163,5 @@ smoke_test_local() {
 }
 
 smoke_test_local
-smoke_test_dd "C++" "${function_cpp_url%/}"
-smoke_test_dgg "C++" "${function_cpp_url%/}"
 smoke_test_dgg "Python" "${function_url%/}"
-smoke_test_quadkey "C++" "${function_cpp_url%/}"
 smoke_test_quadkey "Python" "${function_url%/}"

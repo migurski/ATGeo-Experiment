@@ -51,12 +51,6 @@ image_uri="${image_digest}"
 # Phase 4b: Stage geotiffs to bootstrap bucket
 aws s3 sync geotiffs/ "s3://${deployment_bucket_name}/geotiffs/"
 
-# Phase 4c: Build C++ Lambda and upload to deployment bucket
-bash cpp/build.sh
-cpp_hash=$(md5 -q lambda-cpp.zip)
-cpp_package_key="lambda-cpp-${cpp_hash}.zip"
-aws s3 cp lambda-cpp.zip "s3://${deployment_bucket_name}/${cpp_package_key}"
-
 # Phase 5: Deploy application stack
 aws cloudformation deploy \
     --stack-name "${app_stack_name}" \
@@ -65,7 +59,6 @@ aws cloudformation deploy \
     --parameter-overrides \
         BootstrapStackName="${bootstrap_stack_name}" \
         ImageUri="${image_uri}" \
-        CppPackageKey="${cpp_package_key}" \
     --no-fail-on-empty-changeset
 
 # Phase 6: Sync geotiffs to data bucket
@@ -84,25 +77,14 @@ function_url=$(aws cloudformation describe-stacks \
     --query "Stacks[0].Outputs[?OutputKey=='FunctionUrl'].OutputValue" \
     --output text)
 
-function_cpp_url=$(aws cloudformation describe-stacks \
-    --stack-name "${app_stack_name}" \
-    --query "Stacks[0].Outputs[?OutputKey=='FunctionCppUrl'].OutputValue" \
-    --output text)
-
-function_cpp_custom_domain=$(aws cloudformation describe-stacks \
-    --stack-name "${app_stack_name}" \
-    --query "Stacks[0].Outputs[?OutputKey=='FunctionCppCustomDomain'].OutputValue" \
-    --output text)
-
 cloudfront_domain=$(aws cloudformation describe-stacks \
     --stack-name "${app_stack_name}" \
-    --query "Stacks[0].Outputs[?OutputKey=='CppCloudFrontDomain'].OutputValue" \
+    --query "Stacks[0].Outputs[?OutputKey=='CloudFrontDomain'].OutputValue" \
     --output text)
 
 echo '----'
 echo "Function URL (Python direct): ${function_url}"
-echo "Function URL (C++ direct):    ${function_cpp_url}"
-echo "Function URL (C++ custom):    ${function_cpp_custom_domain}"
+echo "Custom domain:                https://atgeo-experiment.teczno.com/"
 echo "CloudFront domain (CNAME):    ${cloudfront_domain}"
 
 # Phase 8: Smoke tests
