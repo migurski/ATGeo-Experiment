@@ -143,7 +143,10 @@ All of this is already in place. Notes:
 ## Performance characteristics
 
 Measured 2026-04-06 after 30-minute idle (true cold start), 3 smoke-test runs back-to-back.
-Both functions: 512 MB memory, ARM64, `provided.al2023` (C++) / container image (Python).
+Both functions: ARM64, `provided.al2023` (C++) / container image (Python).
+
+**Memory allocation: 256 MB** (reduced from 512 MB — peak usage is 105–124 MB Python,
+50–75 MB C++; cold start and warm execution are unaffected by the reduction).
 
 ### GDAL environment variables (set on both functions)
 
@@ -160,38 +163,41 @@ Effect: Python cold start dropped from ~1300 ms to ~400 ms; warm GDAL lookups im
 
 | Function | Init Duration | First request | Total billed |
 |---|---|---|---|
-| Python | ~400 ms | ~190 ms | ~600 ms |
-| C++ | ~280 ms | ~250 ms | ~530 ms |
+| Python | ~360–400 ms | ~190–350 ms | ~600–720 ms |
+| C++ | ~280 ms | ~250–380 ms | ~530–660 ms |
 
 C++ cold start is ~1.4× faster than Python. (Before GDAL env vars: Python was ~1300 ms, a 4.5× gap.)
+Cold start is not memory-bound: reducing from 512 MB to 256 MB had no effect on init times.
 
 ### Warm execution
 
 **The dominant factor is GDAL block cache warmup, not language.**
 
-- Run 1 (first requests after cold start): GDAL fetches TIFF blocks from S3 — 60–465 ms per request
-- Run 2+: same TIFFs served from in-memory block cache — **2–13 ms per request**
+- Run 1 (first requests after cold start): GDAL fetches TIFF blocks from S3 — 55–490 ms per request
+- Run 2+: same TIFFs served from in-memory block cache — **2–53 ms per request**
 
-Representative timings:
+Representative timings at 256 MB:
 
 | Request | Python run 1 | Python run 2+ | C++ run 1 | C++ run 2+ |
 |---|---|---|---|---|
-| geohash 4-char | 61 ms | 3–6 ms | 118 ms | 2–5 ms |
-| geohash 7-char | 148 ms | 5–6 ms | 398 ms | 2–4 ms |
-| 1-char geohash (large) | 75 ms | 3 ms | 347 ms | 12 ms |
-| quadkey 7-char | 9 ms | 3–4 ms | 465 ms | 7 ms |
-| trivial / 400 error | 1–2 ms | 1–2 ms | 1–5 ms | 1–3 ms |
+| geohash 4-char | 55 ms | 3–12 ms | 115 ms | 2–3 ms |
+| geohash 7-char | 185 ms | 3–17 ms | 335 ms | 2–3 ms |
+| 1-char geohash (large) | 57 ms | 3 ms | 374–490 ms | 2–53 ms |
+| quadkey 7-char | 47 ms | 11–43 ms | 453 ms | 41–52 ms |
+| trivial / 400 error | 1–2 ms | 1–2 ms | 1–2 ms | 1–3 ms |
 
-C++ run-1 warm requests are notably slower than Python (up to 465 ms vs ~165 ms), likely due to
-different GDAL block-fetching patterns. Both converge to sub-10 ms by run 2.
+C++ run-1 warm requests are notably slower than Python (up to 490 ms vs ~185 ms), likely due to
+different GDAL block-fetching patterns. Both converge to low single-digit ms by run 2 for most
+request types; large quadkey/geohash lookups may take a second warm pass to fully cache.
 
-Memory usage: C++ 50–75 MB, Python 108–126 MB.
+Memory usage: C++ 50–75 MB, Python 105–124 MB (both at 256 MB allocation).
 
 ### Summary
 
-For a low-traffic API where cold starts dominate, C++ saves ~70 ms of init time and uses ~half
-the memory. For a warm container under sustained load, both functions are effectively free
-(<10 ms) once the GDAL block cache is populated after the first pass through each TIFF.
+256 MB is the right allocation. Cold start and warm execution are identical to 512 MB, at half
+the GB-second cost. C++ saves ~70–120 ms on cold start init and uses ~half the memory. For a
+warm container under sustained load, both functions are effectively free (<10 ms for most
+requests) once the GDAL block cache is populated after the first pass through each TIFF.
 
 ## Verification
 
