@@ -15,6 +15,7 @@ using namespace aws::lambda_runtime;
 using Aws::Utils::Json::JsonValue;
 
 static const std::string GEOHASH_ALPHABET = "0123456789bcdefghjkmnpqrstuvwxyz";
+static const double MERCATOR_HALF = 20037508.34;
 
 struct BBox { double lon1, lat1, lon2, lat2; };
 
@@ -44,6 +45,137 @@ static BBox geohash2lonlats(const std::string& gh) {
     double y1 = yval / yden, y2 = (yval + 1) / yden;
     return { x1 * 360.0 - 180.0, y1 * 180.0 - 90.0,
              x2 * 360.0 - 180.0, y2 * 180.0 - 90.0 };
+}
+
+static std::pair<long long, long long> quadkey_tile_xy(const std::string& key) {
+    // Replicates _quadkey_tile_xy from lambda.py:
+    // decompose each base-4 digit to 2 bits, split into ybin/xbin, parse as integers
+    std::string xbin, ybin;
+    for (char c : key) {
+        int v = c - '0';
+        ybin += ((v >> 1) & 1) ? '1' : '0';
+        xbin += ((v >> 0) & 1) ? '1' : '0';
+    }
+    long long xtile = 0, ytile = 0;
+    for (char b : xbin) xtile = xtile * 2 + (b - '0');
+    for (char b : ybin) ytile = ytile * 2 + (b - '0');
+    return { xtile, ytile };
+}
+
+static invocation_response quadkey_handler(
+        const std::string& qk, const std::string& geotiff_dir) {
+
+    auto error400 = [](const std::string& msg) {
+        JsonValue resp;
+        resp.WithInteger("statusCode", 400);
+        resp.WithObject("headers", JsonValue().WithString("Content-Type", "text/plain"));
+        resp.WithString("body", msg);
+        return invocation_response::success(resp.View().WriteCompact(), "application/json");
+    };
+
+    if (qk.empty())
+        return error400("Missing quadkey\n");
+    if (qk.size() > 18)
+        return error400("ValueError: quadkey too long (max 18 characters)\n");
+    for (char c : qk) {
+        if (c < '0' || c > '3')
+            return error400("ValueError: invalid quadkey character\n");
+    }
+
+    // Parent cell upper-left in EPSG:3857
+    auto [px, py] = quadkey_tile_xy(qk);
+    double parent_pixel_size = 2.0 * MERCATOR_HALF / static_cast<double>(1LL << qk.size());
+    double ulx = -MERCATOR_HALF + px * parent_pixel_size;
+    double uly =  MERCATOR_HALF - py * parent_pixel_size;
+
+    std::vector<std::pair<std::string, double>> results;
+    double total = 0.0;
+    double dx, dy;
+
+    if (qk.size() == 18) {
+        std::string path = geotiff_dir + "/quadkey-18char.tif";
+        GDALDataset* ds = static_cast<GDALDataset*>(GDALOpen(path.c_str(), GA_ReadOnly));
+        if (!ds)
+            return invocation_response::failure("GDALOpen failed for " + path, "GDALError");
+        float val;
+        CPLErr err = ds->GetRasterBand(1)->RasterIO(
+            GF_Read, static_cast<int>(px), static_cast<int>(py), 1, 1,
+            &val, 1, 1, GDT_Float32, 0, 0);
+        GDALClose(ds);
+        if (err != CE_None)
+            return invocation_response::failure("RasterIO failed", "GDALError");
+        double count = std::isnan(val) ? 0.0 : std::round(static_cast<double>(val) * 10.0) / 10.0;
+        total = count;
+        results.push_back({ qk, count });
+        dx = parent_pixel_size;
+        dy = -parent_pixel_size;
+    } else {
+        int max_depth = static_cast<int>(qk.size()) + 3;
+        if (max_depth > 18) max_depth = 18;
+
+        // Generate all suffixes of a given length in base-4 order
+        for (int depth = static_cast<int>(qk.size()) + 1; depth <= max_depth; ++depth) {
+            std::string tif_path = geotiff_dir + "/quadkey-" + std::to_string(depth) + "char.tif";
+            GDALDataset* ds = static_cast<GDALDataset*>(GDALOpen(tif_path.c_str(), GA_ReadOnly));
+            if (!ds)
+                return invocation_response::failure("GDALOpen failed for " + tif_path, "GDALError");
+
+            int suffix_len = depth - static_cast<int>(qk.size());
+            long long num_children = 1LL << (2 * suffix_len);  // 4^suffix_len
+            for (long long i = 0; i < num_children; ++i) {
+                // Build suffix string from base-4 representation of i, zero-padded to suffix_len
+                std::string child = qk;
+                child.resize(qk.size() + suffix_len, '0');
+                long long tmp = i;
+                for (int j = suffix_len - 1; j >= 0; --j) {
+                    child[qk.size() + j] = static_cast<char>('0' + (tmp % 4));
+                    tmp /= 4;
+                }
+                auto [cx, cy] = quadkey_tile_xy(child);
+                float val;
+                CPLErr err = ds->GetRasterBand(1)->RasterIO(
+                    GF_Read, static_cast<int>(cx), static_cast<int>(cy), 1, 1,
+                    &val, 1, 1, GDT_Float32, 0, 0);
+                if (err != CE_None) {
+                    GDALClose(ds);
+                    return invocation_response::failure("RasterIO failed", "GDALError");
+                }
+                double count = std::isnan(val) ? 0.0 : std::round(static_cast<double>(val) * 10.0) / 10.0;
+                total += count;
+                results.push_back({ child, count });
+            }
+            GDALClose(ds);
+        }
+        double finest_pixel_size = 2.0 * MERCATOR_HALF / static_cast<double>(1LL << max_depth);
+        dx = finest_pixel_size;
+        dy = -finest_pixel_size;
+    }
+
+    total = std::round(total * 10.0) / 10.0;
+
+    std::ostringstream body;
+    body << "{\"quadkey\":\"" << qk << "\",";
+    body << "\"ulx\":" << ulx << ",";
+    body << "\"uly\":" << uly << ",";
+    body << "\"dx\":" << dx << ",";
+    body << "\"dy\":" << dy << ",";
+    body << "\"total\":" << total << ",";
+    body << "\"sub-areas\":{";
+    for (size_t i = 0; i < results.size(); ++i) {
+        if (i > 0) body << ",";
+        const std::string& key = results[i].first;
+        double count = results[i].second;
+        body << "\"" << key << "\":{\"link\":\"/dgg?quadkey=" << key << "\",\"count\":" << count << "}";
+    }
+    body << "}}";
+
+    JsonValue lambda_resp;
+    lambda_resp.WithInteger("statusCode", 200);
+    JsonValue headers;
+    headers.WithString("Content-Type", "application/json");
+    lambda_resp.WithObject("headers", headers);
+    lambda_resp.WithString("body", body.str() + "\n");
+    return invocation_response::success(lambda_resp.View().WriteCompact(), "application/json");
 }
 
 static invocation_response dgg_handler(
@@ -272,6 +404,10 @@ invocation_response handler(invocation_request const& request) {
 
         if (raw_path == "/dgg") {
             auto qsp = view.GetObject("queryStringParameters");
+            if (qsp.IsObject() && qsp.KeyExists("quadkey")) {
+                std::string qk = qsp.GetString("quadkey").c_str();
+                return quadkey_handler(qk, geotiff_dir);
+            }
             std::string gh;
             if (qsp.IsObject() && qsp.KeyExists("geohash"))
                 gh = qsp.GetString("geohash").c_str();
@@ -324,8 +460,8 @@ invocation_response handler(invocation_request const& request) {
 int main(int argc, char* argv[]) {
     GDALAllRegister();
 
-    // CLI mode: --lonlat <lon> <lat>  or  --geohash <gh>
-    if (argc > 1 && (std::string(argv[1]) == "--lonlat" || std::string(argv[1]) == "--geohash")) {
+    // CLI mode: --lonlat <lon> <lat>  or  --geohash <gh>  or  --quadkey <qk>
+    if (argc > 1 && (std::string(argv[1]) == "--lonlat" || std::string(argv[1]) == "--geohash" || std::string(argv[1]) == "--quadkey")) {
         const char* geotiff_dir_env = std::getenv("GEOTIFF_DIR");
         if (!geotiff_dir_env) {
             std::fprintf(stderr, "GEOTIFF_DIR not set\n");
@@ -355,8 +491,20 @@ int main(int argc, char* argv[]) {
             JsonValue envelope(resp.get_payload());
             std::string body = envelope.View().GetString("body").c_str();
             std::printf("%s", body.c_str());
+        } else if (mode == "--quadkey" && argc == 3) {
+            Aws::SDKOptions options;
+            Aws::InitAPI(options);
+            auto resp = quadkey_handler(argv[2], geotiff_dir);
+            Aws::ShutdownAPI(options);
+            if (!resp.is_success()) {
+                std::fprintf(stderr, "quadkey_handler failed: %s\n", resp.get_payload().c_str());
+                return 1;
+            }
+            JsonValue envelope(resp.get_payload());
+            std::string body = envelope.View().GetString("body").c_str();
+            std::printf("%s", body.c_str());
         } else {
-            std::fprintf(stderr, "Usage: %s --lonlat <lon> <lat> | --geohash <geohash>\n", argv[0]);
+            std::fprintf(stderr, "Usage: %s --lonlat <lon> <lat> | --geohash <geohash> | --quadkey <quadkey>\n", argv[0]);
             return 1;
         }
         return 0;

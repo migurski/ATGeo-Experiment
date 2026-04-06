@@ -34,6 +34,22 @@ before routing. `rawPath` (or `path`) determines which sub-handler is called.
 7. Build JSON response: `ulx`, `uly`, `dx`, `dy`, `total`, `data` (nested JSON array)
 8. Return `invocation_response::success(...)` or failure for errors
 
+### Quadkey handler (`/dgg?quadkey=`) — `quadkey_handler()`
+
+Port of Python `quadkey_handler` and `_quadkey_tile_xy()`:
+
+1. `quadkey_tile_xy(key)` — decompose each base-4 digit to 2 bits (high bit → ybin, low
+   bit → xbin), parse xbin/ybin as binary integers to get tile column/row
+2. Validate `quadkey` param: present, 1–18 chars, all digits 0–3
+3. Compute parent upper-left in EPSG:3857: `ulx = -MERCATOR_HALF + xtile * pixel_size`,
+   `uly = MERCATOR_HALF - ytile * pixel_size`
+4. For len < 18: loop depths `len+1` to `min(len+3, 18)`; for each depth enumerate all
+   `4^suffix_len` children by counting `i` from 0 to `4^N-1` and converting to base-4
+   zero-padded suffix; call `quadkey_tile_xy(child)`, `RasterIO` 1×1 each
+5. For len == 18: open `quadkey-18char.tif`, read single pixel
+6. `dx`/`dy` from finest child pixel size in EPSG:3857 meters
+7. Build JSON: `{"quadkey":…,"ulx":…,"uly":…,"dx":…,"dy":…,"total":…,"sub-areas":{…}}`
+
 ### Geohash handler (`/dgg`) — `dgg_handler()`
 
 Port of Python `dgg_handler` and `geohash.geohash2lonlats()`:
@@ -107,6 +123,11 @@ docker run --rm \
   -v "$(pwd)/geotiffs:/geotiffs:ro" \
   -e GEOTIFF_DIR=/geotiffs \
   atgeo-cpp-cli --geohash 9q9p1d
+
+docker run --rm \
+  -v "$(pwd)/geotiffs:/geotiffs:ro" \
+  -e GEOTIFF_DIR=/geotiffs \
+  atgeo-cpp-cli --quadkey 0230102
 ```
 
 ## CloudFormation + deploy.sh integration
@@ -114,8 +135,8 @@ docker run --rm \
 All of this is already in place. Notes:
 
 - `LambdaFunctionCpp` in `application-template.yaml` uses `provided.al2023`, `PackageType: Zip`
-- The `CppCachePolicy` query string whitelist includes `lon`, `lat`, and `geohash` — all three
-  must be listed or CloudFront strips them before forwarding to the Lambda
+- The `CppCachePolicy` query string whitelist includes `lon`, `lat`, `geohash`, and `quadkey` —
+  all must be listed or CloudFront strips them before forwarding to the Lambda
 - `deploy.sh` smoke tests hit the raw CloudFront domain (`CppCloudFrontDomain` output) rather
   than the custom domain alias, which had unreliable DNS resolution
 
